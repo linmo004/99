@@ -35,7 +35,7 @@
       </div>
       <div class="settings-item-arrow">›</div>
     </div>
-    <div class="settings-item" id="goto-privacy">
+        <div class="settings-item" id="goto-privacy">
       <div class="settings-item-left">
         <div class="settings-item-icon">◎</div>
         <div class="settings-item-info">
@@ -45,8 +45,19 @@
       </div>
       <div class="settings-item-arrow">›</div>
     </div>
+    <div class="settings-item" id="goto-devtools">
+      <div class="settings-item-left">
+        <div class="settings-item-icon">🔧</div>
+        <div class="settings-item-info">
+          <div class="settings-item-title">开发者工具</div>
+          <div class="settings-item-sub">存储调试 / 数据查看</div>
+        </div>
+      </div>
+      <div class="settings-item-arrow">›</div>
+    </div>
   </div>
 </div>
+
 
 <!-- API 设置页 -->
 <div id="settings-api" class="settings-layer" style="display:none;">
@@ -209,6 +220,90 @@
 
   </div>
 </div>
+
+<!-- 开发者工具页 -->
+<div id="settings-devtools" class="settings-layer" style="display:none;">
+  <div class="settings-topbar">
+    <button class="settings-back-btn" data-back="settings-root">&#8592;</button>
+    <div class="settings-topbar-title">开发者工具</div>
+  </div>
+  <div class="settings-scroll">
+
+    <div class="settings-section-title">存储键查看</div>
+    <div class="settings-card">
+      <div class="settings-desc">选择要查看的 localStorage 键，点击查看按钮显示内容。</div>
+      <select class="settings-input" id="devtools-key-select" style="margin-top:12px;">
+        <option value="">-- 选择键名 --</option>
+        <option value="liao_roles">liao_roles（了了角色库）</option>
+        <option value="liao_chats">liao_chats（了了聊天记录）</option>
+        <option value="halo9_garden">halo9_garden（家园数据）</option>
+        <option value="halo9_apiActiveConfig">halo9_apiActiveConfig（API配置）</option>
+        <option value="halo9_apiCurrentModel">halo9_apiCurrentModel（当前模型）</option>
+        <option value="halo9_userAvatar">halo9_userAvatar（用户头像）</option>
+        <option value="liao_userName">liao_userName（了了用户名）</option>
+        <option value="liao_userAvatar">liao_userAvatar（了了用户头像）</option>
+        <option value="halo9_roles">halo9_roles（备用角色键）</option>
+        <option value="__all__">全部键名列表</option>
+      </select>
+      <div class="settings-row-btns" style="margin-top:10px;">
+        <button class="settings-btn-primary" id="devtools-view-btn">查看内容</button>
+        <button class="settings-btn-ghost" id="devtools-refresh-keys-btn">刷新键列表</button>
+      </div>
+    </div>
+
+    <div class="settings-section-title">查看结果</div>
+    <div class="settings-card" id="devtools-result-card">
+      <div class="settings-desc" id="devtools-result-meta" style="margin-bottom:8px;"></div>
+      <pre id="devtools-result-content" style="
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: 11px;
+        font-family: 'SF Mono','Menlo','Consolas',monospace;
+        color: #2c3448;
+        background: #f0f4f8;
+        border-radius: 10px;
+        padding: 12px;
+        max-height: 320px;
+        overflow-y: auto;
+        border: 1px solid rgba(153,200,237,0.25);
+        line-height: 1.6;
+      ">点击「查看内容」后显示结果</pre>
+    </div>
+
+    <div class="settings-section-title">所有 localStorage 键</div>
+    <div class="settings-card">
+      <div class="settings-desc">当前浏览器存储中所有键名（点击刷新）</div>
+      <button class="settings-btn-ghost" id="devtools-list-all-btn" style="margin-top:10px;">列出全部键名</button>
+      <div id="devtools-all-keys" style="
+        margin-top:12px;
+        font-size:11px;
+        font-family:'SF Mono','Menlo','Consolas',monospace;
+        color:#5a6a80;
+        line-height:1.8;
+        word-break:break-all;
+      "></div>
+    </div>
+
+    <div class="settings-section-title">快速修复工具</div>
+    <div class="settings-card">
+      <div class="settings-desc">家园角色库修复：将 liao_roles 的内容复制到 halo9_roles（两个键都有数据可确保兼容）</div>
+      <button class="settings-btn-primary" id="devtools-fix-roles-btn" style="margin-top:10px;">执行角色库修复</button>
+      <div id="devtools-fix-msg" style="font-size:12px;margin-top:8px;min-height:18px;color:#4caf84;"></div>
+    </div>
+
+    <div class="settings-section-title">自定义查询</div>
+    <div class="settings-card">
+      <div class="settings-desc">直接输入任意键名查询</div>
+      <input class="settings-input" id="devtools-custom-key" placeholder="输入键名，如 liao_roles" style="margin-top:10px;">
+      <div class="settings-row-btns" style="margin-top:8px;">
+        <button class="settings-btn-primary" id="devtools-custom-view-btn">查询</button>
+        <button class="settings-btn-danger" id="devtools-custom-delete-btn">删除该键</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 
 <!-- 壁纸URL弹窗 -->
 <div class="modal-mask" id="wallpaper-url-modal">

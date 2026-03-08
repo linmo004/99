@@ -651,6 +651,213 @@ if (pinSaveBtn) {
 }
 
 /* ============================================================
+   ⑥ 开发者工具
+   ============================================================ */
+(function initDevTools() {
+
+  /* 入口导航 */
+  const gotoDevtools = document.getElementById('goto-devtools');
+  if (gotoDevtools) {
+    gotoDevtools.addEventListener('click', function () {
+      showLayer('settings-devtools');
+      refreshAllKeysList();
+    });
+  }
+
+  /* 通用返回（data-back 已在全局绑定，无需重复） */
+
+  /* ── 查看指定键内容 ── */
+  function viewKey(keyName) {
+    const metaEl    = document.getElementById('devtools-result-meta');
+    const contentEl = document.getElementById('devtools-result-content');
+    if (!metaEl || !contentEl) return;
+
+    if (keyName === '__all__') {
+      const allKeys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        allKeys.push(localStorage.key(i));
+      }
+      metaEl.textContent    = '共 ' + allKeys.length + ' 个键';
+      contentEl.textContent = allKeys.sort().join('\n');
+      return;
+    }
+
+    if (!keyName) {
+      metaEl.textContent    = '';
+      contentEl.textContent = '请先选择或输入键名';
+      return;
+    }
+
+    const raw = localStorage.getItem(keyName);
+    if (raw === null) {
+      metaEl.style.color    = '#e05c5c';
+      metaEl.textContent    = '键名「' + keyName + '」不存在';
+      contentEl.textContent = '（该键在 localStorage 中不存在）';
+      return;
+    }
+
+    metaEl.style.color = '#4caf84';
+
+    try {
+      const parsed   = JSON.parse(raw);
+      const isArray  = Array.isArray(parsed);
+      const typeDesc = isArray
+        ? '数组，共 ' + parsed.length + ' 条'
+        : (typeof parsed === 'object' ? '对象' : typeof parsed);
+      metaEl.textContent = '键：' + keyName + ' | 类型：' + typeDesc +
+        ' | 原始大小：' + raw.length + ' 字节';
+
+      /* 数组类型显示摘要 + 完整内容 */
+      if (isArray && parsed.length > 0) {
+        /* 先显示每条的摘要 */
+        const summary = parsed.map(function (item, idx) {
+          if (typeof item === 'object' && item !== null) {
+            const keys = Object.keys(item).slice(0, 5).join(', ');
+            const name = item.nickname || item.realname || item.name ||
+              item.id || item.title || item.content || '';
+            return '[' + idx + '] ' + (name ? '「' + String(name).slice(0, 30) + '」' : '') +
+              ' {' + keys + '}';
+          }
+          return '[' + idx + '] ' + String(item).slice(0, 50);
+        }).join('\n');
+        contentEl.textContent = '── 摘要 ──\n' + summary +
+          '\n\n── 完整数据（前3条）──\n' +
+          JSON.stringify(parsed.slice(0, 3), null, 2);
+      } else {
+        contentEl.textContent = JSON.stringify(parsed, null, 2).slice(0, 3000) +
+          (raw.length > 3000 ? '\n\n...（已截断，数据过长）' : '');
+      }
+    } catch (e) {
+      metaEl.style.color    = '#e05c5c';
+      metaEl.textContent    = '键：' + keyName + ' | 原始大小：' + raw.length + ' 字节 | JSON解析失败';
+      contentEl.textContent = raw.slice(0, 500);
+    }
+  }
+
+  const viewBtn = document.getElementById('devtools-view-btn');
+  if (viewBtn) {
+    viewBtn.addEventListener('click', function () {
+      const sel = document.getElementById('devtools-key-select');
+      if (sel) viewKey(sel.value);
+    });
+  }
+
+  /* ── 列出全部键名 ── */
+  function refreshAllKeysList() {
+    const container = document.getElementById('devtools-all-keys');
+    if (!container) return;
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      keys.push(localStorage.key(i));
+    }
+    keys.sort();
+    if (!keys.length) {
+      container.textContent = '（localStorage 为空）';
+      return;
+    }
+    container.innerHTML = keys.map(function (k) {
+      const raw  = localStorage.getItem(k);
+      const size = raw ? raw.length : 0;
+      return '<span style="display:block;padding:2px 0;border-bottom:1px solid rgba(153,200,237,0.12);">' +
+        '<b>' + k + '</b>' +
+        '<span style="color:#9aafc4;margin-left:8px;">' + size + ' 字节</span>' +
+        '</span>';
+    }).join('');
+  }
+
+  const listAllBtn = document.getElementById('devtools-list-all-btn');
+  if (listAllBtn) {
+    listAllBtn.addEventListener('click', refreshAllKeysList);
+  }
+
+  const refreshKeysBtn = document.getElementById('devtools-refresh-keys-btn');
+  if (refreshKeysBtn) {
+    refreshKeysBtn.addEventListener('click', function () {
+      /* 刷新下拉列表中的动态键 */
+      refreshAllKeysList();
+    });
+  }
+
+  /* ── 快速修复：角色库键名同步 ── */
+  const fixRolesBtn = document.getElementById('devtools-fix-roles-btn');
+  if (fixRolesBtn) {
+    fixRolesBtn.addEventListener('click', function () {
+      const msgEl = document.getElementById('devtools-fix-msg');
+      if (!msgEl) return;
+
+      /* 尝试从各种可能的键读取角色数据 */
+      const candidateKeys = ['liao_roles', 'halo9_roles', 'roles'];
+      let found     = null;
+      let foundKey  = '';
+
+      for (let i = 0; i < candidateKeys.length; i++) {
+        try {
+          const raw = localStorage.getItem(candidateKeys[i]);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            found    = parsed;
+            foundKey = candidateKeys[i];
+            break;
+          }
+        } catch (e) {}
+      }
+
+      if (!found) {
+        msgEl.style.color = '#e05c5c';
+        msgEl.textContent = '未找到任何角色数据，请先在了了中创建角色。';
+        return;
+      }
+
+      /* 把找到的数据同步写入所有键，确保兼容 */
+      try {
+        const jsonStr = JSON.stringify(found);
+        localStorage.setItem('liao_roles',   jsonStr);
+        localStorage.setItem('halo9_roles',  jsonStr);
+        msgEl.style.color = '#4caf84';
+        msgEl.textContent = '修复成功！从「' + foundKey + '」读取了 ' + found.length +
+          ' 个角色，已同步写入 liao_roles 和 halo9_roles。';
+      } catch (e) {
+        msgEl.style.color = '#e05c5c';
+        msgEl.textContent = '写入失败：' + e.message;
+      }
+
+      setTimeout(function () {
+        if (msgEl) msgEl.textContent = '';
+      }, 5000);
+    });
+  }
+
+  /* ── 自定义键查询 ── */
+  const customViewBtn = document.getElementById('devtools-custom-view-btn');
+  if (customViewBtn) {
+    customViewBtn.addEventListener('click', function () {
+      const keyInput = document.getElementById('devtools-custom-key');
+      if (!keyInput) return;
+      const key = keyInput.value.trim();
+      if (!key) { alert('请输入键名'); return; }
+      viewKey(key);
+    });
+  }
+
+  const customDeleteBtn = document.getElementById('devtools-custom-delete-btn');
+  if (customDeleteBtn) {
+    customDeleteBtn.addEventListener('click', function () {
+      const keyInput = document.getElementById('devtools-custom-key');
+      if (!keyInput) return;
+      const key = keyInput.value.trim();
+      if (!key) { alert('请输入键名'); return; }
+      if (!confirm('确定要删除键「' + key + '」吗？此操作不可恢复。')) return;
+      localStorage.removeItem(key);
+      alert('已删除键：' + key);
+      refreshAllKeysList();
+    });
+  }
+
+})();
+
+
+/* ============================================================
    弹窗遮罩关闭
    ============================================================ */
 ['wallpaper-url-modal', 'icon-replace-modal'].forEach(id => {
