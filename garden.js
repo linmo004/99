@@ -169,9 +169,20 @@
      ── 角色库读取（多键名兼容，自动探测）──
      ══════════════════════════════════════════════ */
   function getAllRoles() {
-    
-```javascript
     /* 尝试所有可能的键名，自动探测 */
+    var candidateKeys = ['liao_roles', 'halo9_roles', 'roles'];
+    for (var i = 0; i < candidateKeys.length; i++) {
+      try {
+        var raw = localStorage.getItem(candidateKeys[i]);
+        if (!raw) continue;
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  }
     const candidateKeys = [
       'liao_roles',
       'halo9_roles',
