@@ -47,23 +47,23 @@ document.querySelectorAll('.settings-back-btn[data-back]').forEach(btn => {
 });
 
 document.getElementById('goto-api').addEventListener('click', () => {
+  renderApiArchiveList();
   showLayer('settings-api');
-  try { renderApiArchiveList(); } catch(e) { console.warn('renderApiArchiveList error', e); }
 });
 
 document.getElementById('goto-theme').addEventListener('click', () => {
+  renderIconReplaceList();
+  renderColorFields();
+  renderAppNameFields();
+  initWallpaper2Preview();
   showLayer('settings-theme');
-  try { renderIconReplaceList(); } catch(e) { console.warn('renderIconReplaceList error', e); }
-  try { renderColorFields(); } catch(e) { console.warn('renderColorFields error', e); }
-  try { renderAppNameFields(); } catch(e) { console.warn('renderAppNameFields error', e); }
-  try { initWallpaper2Preview(); } catch(e) { console.warn('initWallpaper2Preview error', e); }
 });
 
 document.getElementById('goto-data').addEventListener('click', () => showLayer('settings-data'));
 
 document.getElementById('goto-devtools').addEventListener('click', () => {
+  refreshAllKeysList();
   showLayer('settings-devtools');
-  try { refreshAllKeysList(); } catch(e) { console.warn('refreshAllKeysList error', e); }
 });
 
 /* ============================================================
@@ -82,14 +82,32 @@ function renderApiArchiveList() {
   apiArchives.forEach((arc, idx) => {
     const row = document.createElement('div');
     row.className = 'api-archive-item';
-    row.innerHTML = `
-      <div class="api-archive-info" data-idx="${idx}">
-        <div class="api-archive-name">${arc.name || '未命名'}</div>
-        <div class="api-archive-url">${arc.url || ''}</div>
-      </div>
-      <button class="api-archive-del" data-del="${idx}">删除</button>`;
+
+    const info = document.createElement('div');
+    info.className = 'api-archive-info';
+    info.dataset.idx = idx;
+
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'api-archive-name';
+    nameDiv.textContent = arc.name || '未命名';
+
+    const urlDiv = document.createElement('div');
+    urlDiv.className = 'api-archive-url';
+    urlDiv.textContent = arc.url || '';
+
+    info.appendChild(nameDiv);
+    info.appendChild(urlDiv);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'api-archive-del';
+    delBtn.dataset.del = idx;
+    delBtn.textContent = '删除';
+
+    row.appendChild(info);
+    row.appendChild(delBtn);
     container.appendChild(row);
   });
+
   container.querySelectorAll('.api-archive-info').forEach(info => {
     info.addEventListener('click', function () {
       const arc = apiArchives[parseInt(this.dataset.idx)];
@@ -112,14 +130,18 @@ function renderApiArchiveList() {
 
 function setApiStatus(msg, type) {
   const el = document.getElementById('api-fetch-status');
+  if (!el) return;
   el.textContent = msg;
   el.className = 'api-status-text' + (type ? ' ' + type : '');
 }
 
 function setApiModelVisible(show) {
-  document.getElementById('api-model-label').style.display      = show ? '' : 'none';
-  document.getElementById('api-model-select').style.display     = show ? '' : 'none';
-  document.getElementById('api-model-confirm-btn').style.display = show ? '' : 'none';
+  const label  = document.getElementById('api-model-label');
+  const select = document.getElementById('api-model-select');
+  const btn    = document.getElementById('api-model-confirm-btn');
+  if (label)  label.style.display  = show ? '' : 'none';
+  if (select) select.style.display = show ? '' : 'none';
+  if (btn)    btn.style.display    = show ? '' : 'none';
 }
 
 document.getElementById('api-fetch-models-btn').addEventListener('click', async function () {
@@ -136,12 +158,18 @@ document.getElementById('api-fetch-models-btn').addEventListener('click', async 
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     let models = [];
-    if (Array.isArray(json.data))   models = json.data.map(m => m.id || m.name).filter(Boolean);
+    if (Array.isArray(json.data))        models = json.data.map(m => m.id || m.name).filter(Boolean);
     else if (Array.isArray(json.models)) models = json.models.map(m => m.name || m.id).filter(Boolean);
-    else if (Array.isArray(json))   models = json.map(m => m.id || m.name).filter(Boolean);
+    else if (Array.isArray(json))        models = json.map(m => m.id || m.name).filter(Boolean);
     if (!models.length) throw new Error('未获取到模型列表');
     const sel = document.getElementById('api-model-select');
-    sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+    sel.innerHTML = '';
+    models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      sel.appendChild(opt);
+    });
     setApiModelVisible(true);
     setApiStatus('获取到 ' + models.length + ' 个模型', 'success');
   } catch (err) {
@@ -175,9 +203,12 @@ document.getElementById('api-save-btn').addEventListener('click', function () {
 (function restoreApiConfig() {
   const active = sLoad('apiActiveConfig', null);
   if (!active) return;
-  document.getElementById('api-config-name').value = active.name || '';
-  document.getElementById('api-url').value         = active.url  || '';
-  document.getElementById('api-key').value         = active.key  || '';
+  const nameEl = document.getElementById('api-config-name');
+  const urlEl  = document.getElementById('api-url');
+  const keyEl  = document.getElementById('api-key');
+  if (nameEl) nameEl.value = active.name || '';
+  if (urlEl)  urlEl.value  = active.url  || '';
+  if (keyEl)  keyEl.value  = active.key  || '';
 })();
 
 /* ============================================================
@@ -214,12 +245,12 @@ let wallpaperSrc = sLoad('wallpaper', '');
 function applyWallpaper(src) {
   wallpaperSrc = src;
   sSave('wallpaper', src);
-  document.body.style.backgroundImage    = src ? `url(${src})` : '';
+  document.body.style.backgroundImage    = src ? 'url(' + src + ')' : '';
   document.body.style.backgroundSize     = src ? 'cover' : '';
   document.body.style.backgroundPosition = src ? 'center' : '';
   const preview = document.getElementById('wallpaper-preview');
   if (preview) {
-    preview.style.backgroundImage = src ? `url(${src})` : '';
+    preview.style.backgroundImage = src ? 'url(' + src + ')' : '';
     preview.style.border          = src ? 'none' : '';
   }
   applyWallpaper2Fallback();
@@ -262,7 +293,7 @@ function applyWallpaper2(src) {
   const preview = document.getElementById('wallpaper2-preview');
   if (preview) {
     const ds = src || wallpaperSrc;
-    preview.style.backgroundImage = ds ? `url(${ds})` : '';
+    preview.style.backgroundImage = ds ? 'url(' + ds + ')' : '';
     preview.style.border          = ds ? 'none' : '';
   }
 }
@@ -274,7 +305,7 @@ function applyWallpaper2Fallback() {
 function setPage2Wallpaper(src) {
   const page2 = document.getElementById('page2');
   if (!page2) return;
-  page2.style.backgroundImage    = src ? `url(${src})` : '';
+  page2.style.backgroundImage    = src ? 'url(' + src + ')' : '';
   page2.style.backgroundSize     = src ? 'cover' : '';
   page2.style.backgroundPosition = src ? 'center' : '';
 }
@@ -283,7 +314,7 @@ function initWallpaper2Preview() {
   const preview = document.getElementById('wallpaper2-preview');
   if (!preview) return;
   const ds = wallpaper2Src || wallpaperSrc;
-  preview.style.backgroundImage = ds ? `url(${ds})` : '';
+  preview.style.backgroundImage = ds ? 'url(' + ds + ')' : '';
   preview.style.border          = ds ? 'none' : '';
 }
 
@@ -317,15 +348,15 @@ document.getElementById('wallpaper2-clear-btn').addEventListener('click', functi
 
 /* ---- App名称修改 ---- */
 const appNameRegistry = [
-  { key: 'app-name-dock-chat',     selector: '#dock-chat .app-name',           default: '了了'  },
-  { key: 'app-name-dock-home',     selector: '#dock-home .app-name',           default: '家园'  },
-  { key: 'app-name-dock-settings', selector: '#dock-settings .app-name',       default: '设置'  },
-  { key: 'app-name-chat',          selector: '[data-app="chat"] .app-name',    default: '了了'  },
-  { key: 'app-name-settings',      selector: '[data-app="settings"] .app-name',default: '设置'  },
-  { key: 'app-name-music',         selector: '[data-app="0"] .app-name',       default: '音乐'  },
-  { key: 'app-name-worldbook',     selector: '[data-app="worldbook"] .app-name',default: '世界书'},
-  { key: 'app-name-calendar',      selector: '[data-app="2"] .app-name',       default: '日历'  },
-  { key: 'app-name-gallery',       selector: '[data-app="3"] .app-name',       default: '相册'  },
+  { key: 'app-name-dock-chat',     selector: '#dock-chat .app-name',            default: '了了'   },
+  { key: 'app-name-dock-home',     selector: '#dock-home .app-name',            default: '家园'   },
+  { key: 'app-name-dock-settings', selector: '#dock-settings .app-name',        default: '设置'   },
+  { key: 'app-name-chat',          selector: '[data-app="chat"] .app-name',     default: '了了'   },
+  { key: 'app-name-settings',      selector: '[data-app="settings"] .app-name', default: '设置'   },
+  { key: 'app-name-music',         selector: '[data-app="0"] .app-name',        default: '音乐'   },
+  { key: 'app-name-worldbook',     selector: '[data-app="worldbook"] .app-name',default: '世界书' },
+  { key: 'app-name-calendar',      selector: '[data-app="2"] .app-name',        default: '日历'   },
+  { key: 'app-name-gallery',       selector: '[data-app="3"] .app-name',        default: '相册'   },
 ];
 let customAppNames = sLoad('customAppNames', {});
 
@@ -346,19 +377,35 @@ function renderAppNameFields() {
   appNameRegistry.forEach(reg => {
     const currentVal = customAppNames[reg.key] !== undefined ? customAppNames[reg.key] : reg.default;
     const iconEl     = document.querySelector(reg.selector.replace('.app-name', '.app-icon'));
-    const iconSrc    = iconEl ? iconEl.src : '';
-    const row        = document.createElement('div');
-    row.className    = 'app-name-row';
-    row.innerHTML    = `
-      <img class="app-name-row-icon" src="${iconSrc}" alt="">
-      <span class="app-name-row-label">${reg.default}</span>
-      <input class="app-name-row-input" data-key="${reg.key}" value="${currentVal}" placeholder="${reg.default}">`;
+
+    const row = document.createElement('div');
+    row.className = 'app-name-row';
+
+    const img = document.createElement('img');
+    img.className = 'app-name-row-icon';
+    img.alt = '';
+    if (iconEl) img.src = iconEl.src;
+
+    const label = document.createElement('span');
+    label.className = 'app-name-row-label';
+    label.textContent = reg.default;
+
+    const input = document.createElement('input');
+    input.className = 'app-name-row-input';
+    input.dataset.key = reg.key;
+    input.value = currentVal;
+    input.placeholder = reg.default;
+
+    row.appendChild(img);
+    row.appendChild(label);
+    row.appendChild(input);
     container.appendChild(row);
   });
 }
 
 document.getElementById('app-name-save-btn').addEventListener('click', function () {
   const container = document.getElementById('app-name-fields');
+  if (!container) return;
   container.querySelectorAll('.app-name-row-input').forEach(input => {
     const val = input.value.trim();
     if (val) customAppNames[input.dataset.key] = val;
@@ -381,15 +428,15 @@ document.getElementById('app-name-reset-btn').addEventListener('click', function
 
 /* ---- App 图标替换 ---- */
 const iconRegistry = [
-  { key: 'dock-chat',     label: 'Dock · 了了', selector: '#dock-chat .app-icon'          },
-  { key: 'dock-home',     label: 'Dock · 家园', selector: '#dock-home .app-icon'          },
-  { key: 'dock-settings', label: 'Dock · 设置', selector: '#dock-settings .app-icon'      },
-  { key: 'app2-chat',     label: '了了 App',    selector: '[data-app="chat"] .app-icon'   },
+  { key: 'dock-chat',     label: 'Dock · 了了', selector: '#dock-chat .app-icon'           },
+  { key: 'dock-home',     label: 'Dock · 家园', selector: '#dock-home .app-icon'           },
+  { key: 'dock-settings', label: 'Dock · 设置', selector: '#dock-settings .app-icon'       },
+  { key: 'app2-chat',     label: '了了 App',    selector: '[data-app="chat"] .app-icon'    },
   { key: 'app2-settings', label: '设置 App',    selector: '[data-app="settings"] .app-icon'},
-  { key: 'app4-0',        label: '音乐',        selector: '[data-app="0"] .app-icon'      },
+  { key: 'app4-0',        label: '音乐',        selector: '[data-app="0"] .app-icon'       },
   { key: 'app4-wb',       label: '世界书',      selector: '[data-app="worldbook"] .app-icon'},
-  { key: 'app4-2',        label: '日历',        selector: '[data-app="2"] .app-icon'      },
-  { key: 'app4-3',        label: '相册',        selector: '[data-app="3"] .app-icon'      },
+  { key: 'app4-2',        label: '日历',        selector: '[data-app="2"] .app-icon'       },
+  { key: 'app4-3',        label: '相册',        selector: '[data-app="3"] .app-icon'       },
 ];
 let customIcons = sLoad('customIcons', {});
 let iconEditKey = '';
@@ -409,14 +456,28 @@ function renderIconReplaceList() {
   if (!container) return;
   container.innerHTML = '';
   iconRegistry.forEach(reg => {
+    const iconEl     = document.querySelector(reg.selector);
+    const currentSrc = customIcons[reg.key] || (iconEl ? iconEl.src : '');
+
     const row = document.createElement('div');
     row.className = 'icon-replace-row';
-    const currentSrc = customIcons[reg.key] ||
-      (document.querySelector(reg.selector) ? document.querySelector(reg.selector).src : '');
-    row.innerHTML = `
-      <img class="icon-replace-preview" src="${currentSrc}" alt="">
-      <div class="icon-replace-name">${reg.label}</div>
-      <div class="icon-replace-hint">点击替换 ›</div>`;
+
+    const img = document.createElement('img');
+    img.className = 'icon-replace-preview';
+    img.alt = '';
+    img.src = currentSrc;
+
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'icon-replace-name';
+    nameDiv.textContent = reg.label;
+
+    const hintDiv = document.createElement('div');
+    hintDiv.className = 'icon-replace-hint';
+    hintDiv.textContent = '点击替换 ›';
+
+    row.appendChild(img);
+    row.appendChild(nameDiv);
+    row.appendChild(hintDiv);
     row.addEventListener('click', () => openIconReplaceModal(reg.key, reg.label));
     container.appendChild(row);
   });
@@ -425,9 +486,12 @@ function renderIconReplaceList() {
 function openIconReplaceModal(key, label) {
   iconEditKey = key;
   iconTab = 'url';
-  document.getElementById('icon-replace-modal-title').textContent = '替换：' + label;
-  document.getElementById('icon-url-input').value = '';
-  document.getElementById('icon-file-input').value = '';
+  const titleEl = document.getElementById('icon-replace-modal-title');
+  if (titleEl) titleEl.textContent = '替换：' + label;
+  const urlInput  = document.getElementById('icon-url-input');
+  const fileInput = document.getElementById('icon-file-input');
+  if (urlInput)  urlInput.value  = '';
+  if (fileInput) fileInput.value = '';
   setIconTab('url');
   document.getElementById('icon-replace-modal').classList.add('show');
 }
@@ -441,8 +505,10 @@ function setIconTab(tab) {
   document.querySelectorAll('[data-icon-tab]').forEach(b => {
     b.classList.toggle('active', b.dataset.iconTab === tab);
   });
-  document.getElementById('icon-url-panel').style.display   = tab === 'url'   ? '' : 'none';
-  document.getElementById('icon-local-panel').style.display = tab === 'local' ? '' : 'none';
+  const urlPanel   = document.getElementById('icon-url-panel');
+  const localPanel = document.getElementById('icon-local-panel');
+  if (urlPanel)   urlPanel.style.display   = tab === 'url'   ? '' : 'none';
+  if (localPanel) localPanel.style.display = tab === 'local' ? '' : 'none';
 }
 
 function applyIconSrc(key, src) {
@@ -501,35 +567,47 @@ function renderColorFields() {
   container.innerHTML = '';
   colorDefs.forEach(def => {
     const currentVal = customColors[def.key] || def.default;
+
     const row = document.createElement('div');
     row.className = 'color-field-row';
-    row.innerHTML = `
-      <div class="color-field-label">${def.label}</div>
-      <input type="color" class="color-field-input" data-ckey="${def.key}" value="${currentVal}">
-      <input type="text"  class="color-field-hex"   data-hkey="${def.key}" value="${currentVal}" maxlength="7">`;
-    container.appendChild(row);
-  });
-  container.querySelectorAll('.color-field-input').forEach(picker => {
+
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'color-field-label';
+    labelDiv.textContent = def.label;
+
+    const picker = document.createElement('input');
+    picker.type = 'color';
+    picker.className = 'color-field-input';
+    picker.dataset.ckey = def.key;
+    picker.value = /^#[0-9a-fA-F]{6}$/.test(currentVal) ? currentVal : def.default;
+
+    const hexInput = document.createElement('input');
+    hexInput.type = 'text';
+    hexInput.className = 'color-field-hex';
+    hexInput.dataset.hkey = def.key;
+    hexInput.value = currentVal;
+    hexInput.maxLength = 7;
+
     picker.addEventListener('input', function () {
-      const hexEl = container.querySelector(`.color-field-hex[data-hkey="${this.dataset.ckey}"]`);
-      if (hexEl) hexEl.value = this.value;
+      hexInput.value = this.value;
     });
-  });
-  container.querySelectorAll('.color-field-hex').forEach(hexEl => {
-    hexEl.addEventListener('input', function () {
+    hexInput.addEventListener('input', function () {
       const val = this.value.trim();
-      if (/^#[0-9a-fA-F]{6}$/.test(val)) {
-        const picker = container.querySelector(`.color-field-input[data-ckey="${this.dataset.hkey}"]`);
-        if (picker) picker.value = val;
-      }
+      if (/^#[0-9a-fA-F]{6}$/.test(val)) picker.value = val;
     });
+
+    row.appendChild(labelDiv);
+    row.appendChild(picker);
+    row.appendChild(hexInput);
+    container.appendChild(row);
   });
 }
 
 document.getElementById('color-apply-btn').addEventListener('click', function () {
   const container = document.getElementById('color-fields');
+  if (!container) return;
   colorDefs.forEach(def => {
-    const hexEl = container.querySelector(`.color-field-hex[data-hkey="${def.key}"]`);
+    const hexEl = container.querySelector('.color-field-hex[data-hkey="' + def.key + '"]');
     if (hexEl) {
       const val = hexEl.value.trim();
       if (/^#[0-9a-fA-F]{6}$/.test(val)) customColors[def.key] = val;
@@ -697,8 +775,10 @@ function setPinAvatarTab(tab) {
   document.querySelectorAll('[data-pin-avatar-tab]').forEach(b => {
     b.classList.toggle('active', b.dataset.pinAvatarTab === tab);
   });
-  document.getElementById('pin-avatar-url-panel').style.display   = tab === 'url'   ? '' : 'none';
-  document.getElementById('pin-avatar-local-panel').style.display = tab === 'local' ? '' : 'none';
+  const urlPanel   = document.getElementById('pin-avatar-url-panel');
+  const localPanel = document.getElementById('pin-avatar-local-panel');
+  if (urlPanel)   urlPanel.style.display   = tab === 'url'   ? '' : 'none';
+  if (localPanel) localPanel.style.display = tab === 'local' ? '' : 'none';
 }
 
 document.getElementById('privacy-pin-avatar-url').addEventListener('input', function () {
@@ -761,7 +841,8 @@ if (gotoPrivacyBtn) {
     const previewEl = document.getElementById('privacy-pin-avatar-preview');
     if (previewEl) previewEl.src = saved || DEFAULT_PIN_AVATAR;
     setPinAvatarTab('url');
-    document.getElementById('privacy-pin-avatar-url').value = '';
+    const urlInput = document.getElementById('privacy-pin-avatar-url');
+    if (urlInput) urlInput.value = '';
     showLayer('settings-privacy');
   });
 }
@@ -820,8 +901,8 @@ function devLogWrite(type, content) {
   timeSpan.textContent = '[' + timeStr + '] ';
 
   const contentSpan = document.createElement('span');
-  contentSpan.className   = 'devlog-entry-' + type;
-  const displayContent    = typeof content === 'string'
+  contentSpan.className = 'devlog-entry-' + type;
+  const displayContent  = typeof content === 'string'
     ? content.slice(0, 1200) + (content.length > 1200 ? '…(已截断)' : '')
     : JSON.stringify(content).slice(0, 1200);
   contentSpan.textContent = displayContent;
@@ -832,15 +913,14 @@ function devLogWrite(type, content) {
   win.scrollTop = win.scrollHeight;
 }
 
-/* 暴露全局日志函数 */
 window.halo9Log = devLogWrite;
 
 /* 劫持 fetch 记录 AI API 请求响应 */
 (function patchFetch() {
   const originalFetch = window.fetch;
   window.fetch = async function (...args) {
-    const url       = typeof args[0] === 'string' ? args[0] : (args[0].url || '');
-    const isAiCall  = url.includes('/chat/completions') || url.includes('/completions');
+    const url      = typeof args[0] === 'string' ? args[0] : (args[0].url || '');
+    const isAiCall = url.includes('/chat/completions') || url.includes('/completions');
     if (isAiCall && devLogEnabled) {
       try {
         const body = args[1] && args[1].body ? JSON.parse(args[1].body) : null;
@@ -927,8 +1007,8 @@ function devtoolsViewKey(keyName) {
   }
   metaEl.style.color = '#4caf84';
   try {
-    const parsed  = JSON.parse(raw);
-    const isArray = Array.isArray(parsed);
+    const parsed   = JSON.parse(raw);
+    const isArray  = Array.isArray(parsed);
     const typeDesc = isArray
       ? '数组，共 ' + parsed.length + ' 条'
       : (typeof parsed === 'object' ? '对象' : typeof parsed);
@@ -966,12 +1046,20 @@ function refreshAllKeysList() {
   for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
   keys.sort();
   if (!keys.length) { container.textContent = '（localStorage 为空）'; return; }
-  container.innerHTML = keys.map(k => {
+  container.innerHTML = '';
+  keys.forEach(k => {
     const size = (localStorage.getItem(k) || '').length;
-    return '<span style="display:block;padding:2px 0;border-bottom:1px solid rgba(153,200,237,0.1);">' +
-      '<b>' + k + '</b>' +
-      '<span style="color:#9aafc4;margin-left:8px;">' + size + ' 字节</span></span>';
-  }).join('');
+    const span = document.createElement('span');
+    span.style.cssText = 'display:block;padding:2px 0;border-bottom:1px solid rgba(153,200,237,0.1);';
+    const bold = document.createElement('b');
+    bold.textContent = k;
+    const sizeSpan = document.createElement('span');
+    sizeSpan.style.cssText = 'color:#9aafc4;margin-left:8px;';
+    sizeSpan.textContent = size + ' 字节';
+    span.appendChild(bold);
+    span.appendChild(sizeSpan);
+    container.appendChild(span);
+  });
 }
 
 document.getElementById('devtools-list-all-btn').addEventListener('click', refreshAllKeysList);
@@ -1010,17 +1098,19 @@ document.getElementById('devtools-fix-roles-btn').addEventListener('click', func
 
 /* ── 自定义键查询 ── */
 document.getElementById('devtools-custom-view-btn').addEventListener('click', function () {
-  const key = (document.getElementById('devtools-custom-key') || {}).value || '';
-  if (!key.trim()) { alert('请输入键名'); return; }
-  devtoolsViewKey(key.trim());
+  const keyEl = document.getElementById('devtools-custom-key');
+  const key   = keyEl ? keyEl.value.trim() : '';
+  if (!key) { alert('请输入键名'); return; }
+  devtoolsViewKey(key);
 });
 
 document.getElementById('devtools-custom-delete-btn').addEventListener('click', function () {
-  const key = (document.getElementById('devtools-custom-key') || {}).value || '';
-  if (!key.trim()) { alert('请输入键名'); return; }
-  if (!confirm('确定要删除键「' + key.trim() + '」吗？此操作不可恢复。')) return;
-  localStorage.removeItem(key.trim());
-  alert('已删除键：' + key.trim());
+  const keyEl = document.getElementById('devtools-custom-key');
+  const key   = keyEl ? keyEl.value.trim() : '';
+  if (!key) { alert('请输入键名'); return; }
+  if (!confirm('确定要删除键「' + key + '」吗？此操作不可恢复。')) return;
+  localStorage.removeItem(key);
+  alert('已删除键：' + key);
   refreshAllKeysList();
 });
 
