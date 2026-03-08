@@ -88,6 +88,7 @@ function gdnHandleSpotClick(spotId, data) {
 }
 
 /* ── 住所（公寓楼）界面 ── */
+/* 每层4间房，修复每层只显示2人的bug */
 function gdnRenderAptView(data) {
   gdnShowView('garden-apt-view');
   var building = document.getElementById('garden-apt-building');
@@ -103,17 +104,21 @@ function gdnRenderAptView(data) {
     }) || { id: id, realname: id, nickname: id };
   });
 
-  var rooms = [{ type: 'user', name: '我', avatar: gdnGetUserAvatar() }];
+  /* rooms[0] 是用户，后续是各角色 */
+  var rooms = [{ type: 'user', name: '我', avatar: gdnGetUserAvatar(), roomKey: '__user__' }];
   invitedRoleObjs.forEach(function (role) {
     rooms.push({
-      type:   'role',
-      name:   gdnGetRoleName(role),
-      avatar: gdnGetRoleAvatar(role),
-      roleId: gdnGetRoleId(role),
+      type:    'role',
+      name:    gdnGetRoleName(role),
+      avatar:  gdnGetRoleAvatar(role),
+      roleId:  gdnGetRoleId(role),
+      roomKey: gdnGetRoleId(role),
     });
   });
 
-  var totalFloors = Math.ceil(rooms.length / 2) + 1;
+  /* 每层4间，+1楼是一楼设置室 */
+  var ROOMS_PER_FLOOR = 4;
+  var totalFloors = Math.ceil(rooms.length / ROOMS_PER_FLOOR) + 1;
 
   for (var floor = totalFloors; floor >= 1; floor--) {
     var floorEl = document.createElement('div');
@@ -128,6 +133,7 @@ function gdnRenderAptView(data) {
     roomsEl.className = 'gdn-floor-rooms';
 
     if (floor === 1) {
+      /* 一楼：设置室 */
       var settingsRoom = document.createElement('div');
       settingsRoom.className = 'gdn-settings-room';
       settingsRoom.innerHTML =
@@ -136,8 +142,9 @@ function gdnRenderAptView(data) {
       settingsRoom.addEventListener('click', function () { gdnOpenInviteModal(data); });
       roomsEl.appendChild(settingsRoom);
     } else {
-      var startIdx = (floor - 2) * 2;
-      for (var i = startIdx; i < startIdx + 2 && i < rooms.length; i++) {
+      /* 普通楼层，每层4间 */
+      var startIdx = (floor - 2) * ROOMS_PER_FLOOR;
+      for (var i = startIdx; i < startIdx + ROOMS_PER_FLOOR && i < rooms.length; i++) {
         var room   = rooms[i];
         var doorEl = document.createElement('div');
         doorEl.className = 'gdn-room-door';
@@ -160,6 +167,12 @@ function gdnRenderAptView(data) {
 }
 
 /* ── 房间内部界面 ── */
+/*
+ * 修复bug：
+ * 1. 进入谁的房间，只显示该房主的头像（如果在房间里）或不在房间的提示。
+ * 2. 其他角色/用户如果也在home（来串门），也显示在该房间里。
+ * 3. 但"不在家"的只显示房主自己不在的提示，不显示所有不在的人。
+ */
 function gdnRenderRoomView(roomOwner, data) {
   gdnShowView('garden-room-view');
 
@@ -173,73 +186,144 @@ function gdnRenderRoomView(roomOwner, data) {
   if (!avatarsEl) return;
   avatarsEl.innerHTML = '';
 
-  var presentChars = [];
-  var absentChars  = [];
+  /* ── 判断房主是否在家 ── */
+  var ownerIsUser = (roomOwner.type === 'user' || roomOwner.roomKey === '__user__');
+  var ownerAtHome = false;
+  var ownerStatus = '';
+  var ownerAbsentLocation = '';
 
+  if (ownerIsUser) {
+    ownerAtHome = (data.userPosition === 'home');
+    ownerStatus = data.userStatus || '在房间里休息';
+    ownerAbsentLocation = data.userPosition;
+  } else {
+    var ownerId = roomOwner.roleId;
+    ownerAtHome = (data.positions[ownerId] === 'home');
+    ownerStatus = data.charStatuses[ownerId] || '在房间里';
+    ownerAbsentLocation = data.positions[ownerId];
+  }
+
+  /* ── 收集在家的人（用于串门显示）── */
+  /* 所有在home的人都会出现在房间里，因为房间是公寓楼的公共空间 */
+  var presentChars = [];
+
+  /* 用户 */
   if (data.userPosition === 'home') {
     presentChars.push({
-      isUser: true, name: '我',
+      isUser: true,
+      name:   '我',
       avatar: gdnGetUserAvatar(),
-      status: data.userStatus || '在房间里',
-    });
-  } else {
-    absentChars.push({
-      isUser: true, name: '我',
-      avatar: gdnGetUserAvatar(),
-      location: data.userPosition,
+      status: data.userStatus || '在家',
     });
   }
 
+  /* 已入住角色 */
   (data.invitedRoles || []).forEach(function (rid) {
-    var role = gdnGetRoleById(rid);
     if (data.positions[rid] === 'home') {
+      var role = gdnGetRoleById(rid);
       presentChars.push({
-        isUser: false, roleId: rid,
+        isUser: false,
+        roleId: rid,
         name:   gdnGetRoleName(role),
         avatar: gdnGetRoleAvatar(role),
-        status: data.charStatuses[rid] || '在房间里',
+        status: data.charStatuses[rid] || '在家',
         role:   role,
-      });
-    } else {
-      absentChars.push({
-        isUser: false, roleId: rid,
-        name:     gdnGetRoleName(role),
-        avatar:   gdnGetRoleAvatar(role),
-        role:     role,
       });
     }
   });
 
-  presentChars.forEach(function (char, idx) {
-    var point = GDN_ROOM_AVATAR_POINTS[idx % GDN_ROOM_AVATAR_POINTS.length];
-    var pin   = document.createElement('div');
-    pin.className  = 'gdn-room-avatar-pin';
-    pin.style.left = point.left;
-    pin.style.top  = point.top;
-    pin.innerHTML  =
-      '<img src="' + char.avatar + '" alt="">' +
-      '<div class="gdn-room-avatar-pin-name">' + char.name + '</div>';
-    (function (c) {
-      pin.addEventListener('click', function () {
-        gdnShowBubblePopup(c, data, pin.getBoundingClientRect());
-      });
-    })(char);
-    avatarsEl.appendChild(pin);
-  });
-
-  if (absentChars.length > 0) {
+  /* ── 如果房主不在家，显示提示；如果在家，正常渲染 ── */
+  if (!ownerAtHome) {
+    /* 房主不在房间，显示去哪里了 */
     var absentWrap = document.createElement('div');
     absentWrap.className = 'gdn-room-absent';
-    absentChars.forEach(function (char) {
-      var ll   = (GDN_MAP_SPOTS.find(function (s) { return s.id === char.location; }) || {}).label || char.location;
-      var chip = document.createElement('div');
-      chip.className = 'gdn-room-absent-chip';
-      chip.innerHTML =
-        '<img src="' + char.avatar + '" alt="">' +
-        '<span>' + char.name + ' 现在在' + ll + '</span>';
-      absentWrap.appendChild(chip);
-    });
+
+    var locLabel = '';
+    if (ownerIsUser) {
+      locLabel = (GDN_MAP_SPOTS.find(function (s) { return s.id === ownerAbsentLocation; }) || {}).label || ownerAbsentLocation;
+    } else {
+      locLabel = (GDN_MAP_SPOTS.find(function (s) { return s.id === ownerAbsentLocation; }) || {}).label || ownerAbsentLocation;
+    }
+
+    var chip = document.createElement('div');
+    chip.className = 'gdn-room-absent-chip';
+    chip.innerHTML =
+      '<img src="' + roomOwner.avatar + '" alt="">' +
+      '<span>' + roomOwner.name + ' 现在在' + locLabel + '，不在房间</span>';
+    absentWrap.appendChild(chip);
     avatarsEl.appendChild(absentWrap);
+
+    /* 即使房主不在，其他在家的人也可能在串门，显示他们 */
+    /* 排除房主自己（避免重复） */
+    var visitors = presentChars.filter(function (c) {
+      if (ownerIsUser) return !c.isUser; /* 用户是房主时，显示其他角色串门 */
+      return c.isUser || (c.roleId !== roomOwner.roleId); /* 角色是房主时，显示用户和其他角色串门 */
+    });
+
+    visitors.forEach(function (char, idx) {
+      var point = GDN_ROOM_AVATAR_POINTS[idx % GDN_ROOM_AVATAR_POINTS.length];
+      var pin   = document.createElement('div');
+      pin.className  = 'gdn-room-avatar-pin';
+      pin.style.left = point.left;
+      pin.style.top  = point.top;
+      pin.innerHTML  =
+        '<img src="' + char.avatar + '" alt="">' +
+        '<div class="gdn-room-avatar-pin-name">' + char.name + '（串门）</div>';
+      (function (c) {
+        pin.addEventListener('click', function () {
+          gdnShowBubblePopup(c, data, pin.getBoundingClientRect());
+        });
+      })(char);
+      avatarsEl.appendChild(pin);
+    });
+
+  } else {
+    /* 房主在家，渲染所有在家的人（房主排在第一位） */
+    /* 先把房主提到最前面 */
+    var ownerChar = null;
+    var otherChars = [];
+
+    presentChars.forEach(function (c) {
+      var isOwner = ownerIsUser ? c.isUser : (c.roleId === roomOwner.roleId);
+      if (isOwner) ownerChar = c;
+      else otherChars.push(c);
+    });
+
+    /* 如果房主在presentChars里没找到（理论上不应发生），兜底构建 */
+    if (!ownerChar) {
+      ownerChar = {
+        isUser: ownerIsUser,
+        roleId: ownerIsUser ? undefined : roomOwner.roleId,
+        name:   roomOwner.name,
+        avatar: roomOwner.avatar,
+        status: ownerStatus,
+        role:   ownerIsUser ? null : gdnGetRoleById(roomOwner.roleId),
+      };
+    }
+
+    /* 房主第一，其他串门的排后面 */
+    var displayChars = [ownerChar].concat(otherChars);
+
+    displayChars.forEach(function (char, idx) {
+      var point = GDN_ROOM_AVATAR_POINTS[idx % GDN_ROOM_AVATAR_POINTS.length];
+      var pin   = document.createElement('div');
+      pin.className  = 'gdn-room-avatar-pin';
+      pin.style.left = point.left;
+      pin.style.top  = point.top;
+
+      var label = char.name;
+      if (idx > 0) label += '（串门）';
+
+      pin.innerHTML =
+        '<img src="' + char.avatar + '" alt="">' +
+        '<div class="gdn-room-avatar-pin-name">' + label + '</div>';
+      (function (c) {
+        pin.addEventListener('click', function () {
+          gdnShowBubblePopup(c, data, pin.getBoundingClientRect());
+        });
+      })(char);
+      avatarsEl.appendChild(pin);
+    });
   }
 }
 
@@ -807,10 +891,8 @@ function gdnOpenInviteModal(data) {
 }
 
 function gdnConfirmInvite(data) {
-  /* 所有id统一转字符串存储 */
   data.invitedRoles = gdnInviteSelected.map(String).slice();
 
-  /* 为新入住角色分配位置 */
   var locationIds = GDN_MAP_SPOTS.map(function (s) { return s.id; });
   data.invitedRoles.forEach(function (rid) {
     if (!data.positions[rid]) {
@@ -820,7 +902,6 @@ function gdnConfirmInvite(data) {
     }
   });
 
-  /* 清理已移出角色 */
   var posKeys = Object.keys(data.positions);
   for (var i = 0; i < posKeys.length; i++) {
     var rid = posKeys[i];
