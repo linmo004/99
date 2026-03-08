@@ -47,23 +47,23 @@ document.querySelectorAll('.settings-back-btn[data-back]').forEach(btn => {
 });
 
 document.getElementById('goto-api').addEventListener('click', () => {
-  renderApiArchiveList();
   showLayer('settings-api');
+  try { renderApiArchiveList(); } catch(e) { console.warn('renderApiArchiveList error', e); }
 });
 
 document.getElementById('goto-theme').addEventListener('click', () => {
-  renderIconReplaceList();
-  renderColorFields();
-  renderAppNameFields();
-  initWallpaper2Preview();
   showLayer('settings-theme');
+  try { renderIconReplaceList(); } catch(e) { console.warn('renderIconReplaceList error', e); }
+  try { renderColorFields(); } catch(e) { console.warn('renderColorFields error', e); }
+  try { renderAppNameFields(); } catch(e) { console.warn('renderAppNameFields error', e); }
+  try { initWallpaper2Preview(); } catch(e) { console.warn('initWallpaper2Preview error', e); }
 });
 
 document.getElementById('goto-data').addEventListener('click', () => showLayer('settings-data'));
 
 document.getElementById('goto-devtools').addEventListener('click', () => {
-  refreshAllKeysList();
   showLayer('settings-devtools');
+  try { refreshAllKeysList(); } catch(e) { console.warn('refreshAllKeysList error', e); }
 });
 
 /* ============================================================
@@ -73,6 +73,7 @@ let apiArchives = sLoad('apiArchives', []);
 
 function renderApiArchiveList() {
   const container = document.getElementById('api-archive-list');
+  if (!container) return;
   if (!apiArchives.length) {
     container.innerHTML = '<div class="settings-desc" style="padding:4px 0;">暂无存档，保存后显示在这里</div>';
     return;
@@ -388,7 +389,7 @@ const iconRegistry = [
   { key: 'app4-0',        label: '音乐',        selector: '[data-app="0"] .app-icon'      },
   { key: 'app4-wb',       label: '世界书',      selector: '[data-app="worldbook"] .app-icon'},
   { key: 'app4-2',        label: '日历',        selector: '[data-app="2"] .app-icon'      },
-  { key: 'app4-3',        label: '相册', selector: '[data-app="3"] .app-icon' },
+  { key: 'app4-3',        label: '相册',        selector: '[data-app="3"] .app-icon'      },
 ];
 let customIcons = sLoad('customIcons', {});
 let iconEditKey = '';
@@ -405,6 +406,7 @@ restoreAllIcons();
 
 function renderIconReplaceList() {
   const container = document.getElementById('icon-replace-list');
+  if (!container) return;
   container.innerHTML = '';
   iconRegistry.forEach(reg => {
     const row = document.createElement('div');
@@ -495,6 +497,7 @@ applyColors(customColors);
 
 function renderColorFields() {
   const container = document.getElementById('color-fields');
+  if (!container) return;
   container.innerHTML = '';
   colorDefs.forEach(def => {
     const currentVal = customColors[def.key] || def.default;
