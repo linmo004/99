@@ -20,7 +20,7 @@
         <div class="settings-item-icon">◈</div>
         <div class="settings-item-info">
           <div class="settings-item-title">美化 / 主题</div>
-          <div class="settings-item-sub">壁纸、图标、配色、页面美化</div>
+          <div class="settings-item-sub">暗色模式、壁纸、图标、配色</div>
         </div>
       </div>
       <div class="settings-item-arrow">›</div>
@@ -57,22 +57,6 @@
     </div>
   </div>
 </div>
-
-    <!-- 暗色模式 -->
-    <div class="settings-section-title">显示模式</div>
-    <div class="settings-card">
-      <div class="dark-mode-toggle-wrap">
-        <div>
-          <div class="dark-mode-toggle-label">暗色模式</div>
-          <div class="dark-mode-toggle-sub">白色系 → 黑色系，彩色不受影响</div>
-        </div>
-        <label class="toggle-switch" id="dark-mode-toggle-label">
-          <input type="checkbox" id="dark-mode-toggle">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-    </div>
-
 
 <!-- API 设置页 -->
 <div id="settings-api" class="settings-layer" style="display:none;">
@@ -111,7 +95,22 @@
   </div>
   <div class="settings-scroll">
 
-    <!-- 第一页壁纸 -->
+    <!-- 暗色模式 -->
+    <div class="settings-section-title">显示模式</div>
+    <div class="settings-card">
+      <div class="dark-mode-toggle-wrap">
+        <div>
+          <div class="dark-mode-toggle-label">🌙 暗色模式</div>
+          <div class="dark-mode-toggle-sub">白色系→黑色系，彩色不受影响，全局生效</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="dark-mode-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 主页壁纸 -->
     <div class="settings-section-title">主页壁纸（第一页）</div>
     <div class="settings-card">
       <div class="theme-wallpaper-preview" id="wallpaper-preview"></div>
@@ -126,7 +125,7 @@
     <!-- 第二页壁纸 -->
     <div class="settings-section-title">第二页独立壁纸</div>
     <div class="settings-card">
-      <div class="settings-desc">单独为第二页设置壁纸，不影响第一页。清除后第二页使用主页壁纸。</div>
+      <div class="settings-desc">单独为第二页设置壁纸，不影响第一页。清除后第二页跟随主页壁纸。</div>
       <div class="theme-wallpaper-preview" id="wallpaper2-preview" style="margin-top:10px;"></div>
       <div class="settings-row-btns" style="margin-top:10px;">
         <button class="settings-btn-primary" id="wallpaper2-url-btn">输入URL</button>
@@ -137,7 +136,7 @@
     </div>
 
     <!-- App名称修改 -->
-    <div class="settings-section-title">第一页 App 名称修改</div>
+    <div class="settings-section-title">App 名称修改</div>
     <div class="settings-card">
       <div class="settings-desc">修改主屏幕上各 App 图标下方显示的名称。</div>
       <div id="app-name-fields" style="margin-top:8px;"></div>
@@ -174,7 +173,7 @@
 
     <div class="settings-section-title">全局完整备份（推荐）</div>
     <div class="settings-card">
-      <div class="settings-desc">导出当前浏览器中<b>全部</b> localStorage 数据（包含角色、聊天、家园、设置、了了所有数据），用于完整备份。导入时会全量覆盖还原。</div>
+      <div class="settings-desc">导出当前浏览器中<b>全部</b> localStorage 数据（包含角色、聊天、家园、设置等所有数据），用于完整备份。导入时会全量覆盖还原。</div>
       <div class="settings-row-btns" style="margin-top:10px;">
         <button class="settings-btn-primary" id="export-global-btn">导出全部备份</button>
         <button class="settings-btn-ghost" id="import-global-btn">导入全部备份</button>
@@ -276,7 +275,7 @@
 
     <div class="settings-section-title">AI 日志窗口</div>
     <div class="settings-card">
-      <div class="settings-desc">实时记录 AI API 的请求、返回和报错信息，方便排查问题。</div>
+      <div class="settings-desc">实时记录 AI API 的请求、返回和报错信息。</div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <button class="settings-btn-primary" id="devtools-log-toggle-btn">开启日志记录</button>
         <button class="settings-btn-ghost" id="devtools-log-clear-btn">清空日志</button>
@@ -323,7 +322,7 @@
     </div>
 
     <div class="settings-section-title">查看结果</div>
-    <div class="settings-card" id="devtools-result-card">
+    <div class="settings-card">
       <div class="settings-desc" id="devtools-result-meta" style="margin-bottom:8px;"></div>
       <pre id="devtools-result-content" style="
         white-space:pre-wrap;word-break:break-all;font-size:11px;
