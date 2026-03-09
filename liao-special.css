@@ -268,7 +268,7 @@ body.timestamp-hidden .chat-msg-timestamp {
 
 .transfer-inline-status {
   font-size: 11px;
-    color: var(--primary, #99C8ED);
+  color: var(--primary, #99C8ED);
   border-top: 1px solid rgba(153,200,237,0.18);
   padding-top: 7px;
   font-weight: 600;
@@ -372,7 +372,6 @@ body.timestamp-hidden .chat-msg-timestamp {
 
 /* ================================================================
    核心：表情包消息 / 转账消息 的气泡壳完全透明无边框
-   其他消息（语音/照片/文字）气泡正常显示
    ================================================================ */
 .bubble-emoji-only,
 .bubble-transfer-only {
@@ -422,7 +421,6 @@ body.timestamp-hidden .chat-msg-timestamp {
   flex-direction: row;
   flex-shrink: 0;
   overflow: hidden;
-  /* 关键：面板本身绝不横向溢出 */
   width: 100%;
   box-sizing: border-box;
 }
@@ -475,17 +473,12 @@ body.timestamp-hidden .chat-msg-timestamp {
 .emoji-sidebar-btn:active { background: rgba(153,200,237,0.14); }
 
 /* ================================================================
-   核心修复：表情包网格
-   - flex:1 + min-width:0 保证不超出父容器
-   - overflow-x:hidden 禁止横向滚动
-   - overflow-y:auto 允许纵向滚动
-   - grid 4列，用 1fr 自动平分宽度，不固定像素
-   - box-sizing:border-box 防止 padding 撑破
+   表情包网格 — 核心修复
+   grid 区域可上下滚动，图片缩小为固定高度矩形
    ================================================================ */
 .emoji-panel-grid {
   flex: 1;
   min-width: 0;
-  max-width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -508,7 +501,6 @@ body.timestamp-hidden .chat-msg-timestamp {
   gap: 2px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  /* 宽度完全由 grid 的 1fr 决定，不要手动设置 width */
   min-width: 0;
   box-sizing: border-box;
   overflow: hidden;
@@ -518,26 +510,19 @@ body.timestamp-hidden .chat-msg-timestamp {
 
 /* ================================================================
    核心修复：表情包图片
-   - width:100% 填满格子
-   - aspect-ratio:1/1 保证正方形
-   - object-fit:cover 裁剪填充，不变形
-   - display:block 消除行内间距
-   - min-width:0 / min-height:0 防止撑破格子
+   固定高度 56px，宽度撑满格子，object-fit:cover 裁剪填充
    ================================================================ */
 .emoji-grid-item {
   width: 100%;
-  aspect-ratio: 1 / 1;
+  height: 56px;
   border-radius: 6px;
   object-fit: cover;
   display: block;
   border: 1.5px solid transparent;
   transition: border-color .13s;
   min-width: 0;
-  min-height: 0;
   box-sizing: border-box;
-  /* 防止图片自身尺寸撑破格子 */
   max-width: 100%;
-  height: auto;
 }
 
 .emoji-grid-wrap:active .emoji-grid-item {
@@ -586,7 +571,7 @@ body.timestamp-hidden .chat-msg-timestamp {
 
 .emoji-manage-item img {
   width: 100%;
-  aspect-ratio: 1;
+  height: 60px;
   object-fit: cover;
   display: block;
 }
@@ -859,7 +844,6 @@ body.timestamp-hidden .chat-msg-timestamp {
 
 /* ================================================================
    表情包输入联想推荐栏
-   默认隐藏，有匹配时加 .visible 显示
    ================================================================ */
 .emoji-suggest-bar {
   display: none;
@@ -1035,6 +1019,10 @@ body.dark-mode .emoji-suggest-item-name { color: #5a6a80; }
 .chat-msg-row.edit-mode-selected {
   background: rgba(153, 200, 237, 0.08);
   border-radius: 12px;
+}
+
+body.dark-mode .chat-msg-row.edit-mode-selected {
+  background: rgba(80,120,160,0.12);
 }
 
 body.edit-mode-on .chat-msg-row:hover .chat-msg-bubble {

@@ -4,13 +4,45 @@
    ============================================================ */
 
 function sSave(key, val) {
-  try { localStorage.setItem('halo9_' + key, JSON.stringify(val)); } catch (e) {}
+  try {
+    localStorage.setItem('halo9_' + key, JSON.stringify(val));
+  } catch (e) {
+    console.warn('[sSave] 存储失败，key:', key, e);
+    alert('保存失败：本地存储空间不足。图片已自动压缩但仍超限，请尝试使用图片 URL 代替本地上传。');
+  }
 }
 function sLoad(key, def) {
   try {
     const v = localStorage.getItem('halo9_' + key);
     return v !== null ? JSON.parse(v) : def;
   } catch (e) { return def; }
+}
+
+/* ============================================================
+   图片压缩工具函数
+   maxSize: 图片最大边长（px）
+   quality: jpeg 压缩质量 0~1
+   ============================================================ */
+function compressImage(dataUrl, maxSize, quality) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = function () {
+      let w = img.width;
+      let h = img.height;
+      if (w > maxSize || h > maxSize) {
+        if (w >= h) { h = Math.round(h * maxSize / w); w = maxSize; }
+        else        { w = Math.round(w * maxSize / h); h = maxSize; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width  = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = function () { resolve(dataUrl); };
+    img.src = dataUrl;
+  });
 }
 
 window.initSettings = function () {
@@ -262,7 +294,7 @@ window.initSettings = function () {
     }
   })();
 
-  /* ---- 壁纸工具函数（变量已在顶部声明，安全） ---- */
+  /* ---- 壁纸工具函数 ---- */
   function setPage2Wallpaper(src) {
     const p2 = document.getElementById('page2');
     if (!p2) return;
@@ -309,11 +341,11 @@ window.initSettings = function () {
     preview.style.border          = ds ? 'none' : '';
   }
 
-  /* 启动时应用壁纸（此时两变量均已声明，无 TDZ） */
+  /* 启动时应用壁纸 */
   applyWallpaper(wallpaperSrc);
   applyWallpaper2(wallpaper2Src);
 
-  /* 主页壁纸按钮 */
+  /* ---- 主页壁纸按钮 ---- */
   const wpUrlBtn = document.getElementById('wallpaper-url-btn');
   if (wpUrlBtn) wpUrlBtn.addEventListener('click', function () {
     const inp = document.getElementById('wallpaper-url-input');
@@ -339,17 +371,21 @@ window.initSettings = function () {
     if (fi) fi.click();
   });
   const wpFileInput = document.getElementById('wallpaper-file-input');
-  if (wpFileInput) wpFileInput.addEventListener('change', function () {
+  if (wpFileInput) wpFileInput.addEventListener('change', async function () {
     const file = this.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = e => applyWallpaper(e.target.result);
+    reader.onload = async e => {
+      const compressed = await compressImage(e.target.result, 1200, 0.75);
+      applyWallpaper(compressed);
+    };
     reader.readAsDataURL(file);
+    this.value = '';
   });
   const wpClearBtn = document.getElementById('wallpaper-clear-btn');
   if (wpClearBtn) wpClearBtn.addEventListener('click', () => applyWallpaper(''));
 
-  /* 第二页壁纸按钮 */
+  /* ---- 第二页壁纸按钮 ---- */
   const wp2UrlBtn = document.getElementById('wallpaper2-url-btn');
   if (wp2UrlBtn) wp2UrlBtn.addEventListener('click', function () {
     const inp = document.getElementById('wallpaper2-url-input');
@@ -364,7 +400,7 @@ window.initSettings = function () {
     const modal = document.getElementById('wallpaper2-url-modal');
     if (modal) modal.classList.remove('show');
   });
-  const wp2UrlCancel = document.getElementById('wallpaper2-url-cancel');
+  const wp2LocalBtn = document.getElementById('wallpaper2-url-cancel');
   if (wp2UrlCancel) wp2UrlCancel.addEventListener('click', function () {
     const modal = document.getElementById('wallpaper2-url-modal');
     if (modal) modal.classList.remove('show');
@@ -375,12 +411,16 @@ window.initSettings = function () {
     if (fi) fi.click();
   });
   const wp2FileInput = document.getElementById('wallpaper2-file-input');
-  if (wp2FileInput) wp2FileInput.addEventListener('change', function () {
+  if (wp2FileInput) wp2FileInput.addEventListener('change', async function () {
     const file = this.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = e => applyWallpaper2(e.target.result);
+    reader.onload = async e => {
+      const compressed = await compressImage(e.target.result, 1200, 0.75);
+      applyWallpaper2(compressed);
+    };
     reader.readAsDataURL(file);
+    this.value = '';
   });
   const wp2ClearBtn = document.getElementById('wallpaper2-clear-btn');
   if (wp2ClearBtn) wp2ClearBtn.addEventListener('click', () => applyWallpaper2(''));
@@ -588,8 +628,9 @@ window.initSettings = function () {
         const file   = fileEl ? fileEl.files[0] : null;
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = e => {
-          applyIconSrc(iconEditKey, e.target.result);
+        reader.onload = async e => {
+          const compressed = await compressImage(e.target.result, 300, 0.85);
+          applyIconSrc(iconEditKey, compressed);
           const modal = document.getElementById('icon-replace-modal');
           if (modal) modal.classList.remove('show');
         };
@@ -698,20 +739,48 @@ window.initSettings = function () {
   /* ============================================================
      ③ 数据管理
      ============================================================ */
-  const ALL_DATA_KEYS = [
-    'cdItems','carouselUrls','userAvatar','userSig','msgData','textBars',
-    'apiArchives','apiActiveConfig','apiCurrentModel','customIcons',
-    'customColors','wallpaper','wallpaper2','customAppNames','pinAvatar',
-    'p2UcBg','p2UcName','p2UcUid','p2UcFans','p2UcLikes',
-    'p2AlbumBg','p2CdImg','page2Cards',
-  ];
-  const THEME_DATA_KEYS = ['customIcons','customColors','wallpaper','wallpaper2','customAppNames'];
 
-  function collectData(keys) {
+  /* 主页 + 所有 App 数据键（halo9_ 前缀） */
+  const HOME_DATA_KEYS = [
+    'cdItems', 'carouselUrls', 'userAvatar', 'userSig', 'msgData', 'textBars',
+    'apiArchives', 'apiActiveConfig', 'apiCurrentModel',
+    'customIcons', 'customColors', 'wallpaper', 'wallpaper2', 'customAppNames',
+    'darkMode', 'pinAvatar', 'lockPin',
+    'p2UcBg', 'p2UcName', 'p2UcUid', 'p2UcFans', 'p2UcLikes',
+    'p2AlbumBg', 'p2CdImg', 'page2Cards',
+    'garden',
+  ];
+
+  /* 美化数据键 */
+  const THEME_DATA_KEYS = [
+    'customIcons', 'customColors', 'wallpaper', 'wallpaper2', 'customAppNames', 'darkMode',
+  ];
+
+  /* 了了 App 及家园原始键（非 halo9_ 前缀） */
+  const LIAO_RAW_KEYS = [
+    'liao_roles', 'liao_chats', 'liao_suiyan', 'liao_userName', 'liao_userAvatar',
+    'liao_suiyanBg', 'liao_emojis', 'liao_emojiCats', 'liao_favorites',
+    'liao_personas', 'liao_worldbook',
+  ];
+
+  function collectHalo9Data(keys) {
     const result = {};
     keys.forEach(k => {
       const v = localStorage.getItem('halo9_' + k);
-      if (v !== null) result[k] = JSON.parse(v);
+      if (v !== null) {
+        try { result['halo9_' + k] = JSON.parse(v); } catch (e) { result['halo9_' + k] = v; }
+      }
+    });
+    return result;
+  }
+
+  function collectRawData(rawKeys) {
+    const result = {};
+    rawKeys.forEach(k => {
+      const v = localStorage.getItem(k);
+      if (v !== null) {
+        try { result[k] = JSON.parse(v); } catch (e) { result[k] = v; }
+      }
     });
     return result;
   }
@@ -724,13 +793,17 @@ window.initSettings = function () {
     URL.revokeObjectURL(url);
   }
 
-  function importJson(file, keys, callback) {
+  function importAllFromJson(file, callback) {
     const reader = new FileReader();
     reader.onload = e => {
       try {
         const data = JSON.parse(e.target.result);
-        keys.forEach(k => {
-          if (k in data) localStorage.setItem('halo9_' + k, JSON.stringify(data[k]));
+        Object.entries(data).forEach(([k, v]) => {
+          try {
+            localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+          } catch (ex) {
+            console.warn('导入键失败（可能超出存储限制）：', k, ex);
+          }
         });
         if (callback) callback();
       } catch (err) { alert('导入失败：JSON 格式错误'); }
@@ -738,7 +811,7 @@ window.initSettings = function () {
     reader.readAsText(file);
   }
 
-  /* 全局完整备份 */
+  /* ---- 全局完整备份（遍历所有 localStorage 键） ---- */
   const exportGlobalBtn = document.getElementById('export-global-btn');
   if (exportGlobalBtn) {
     exportGlobalBtn.addEventListener('click', function () {
@@ -751,12 +824,14 @@ window.initSettings = function () {
       const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
-      a.href = url; a.download = 'halo9_global_backup_' + Date.now() + '.json'; a.click();
+      a.href = url;
+      a.download = 'halo9_全量备份_' + new Date().toISOString().slice(0, 10) + '.json';
+      a.click();
       URL.revokeObjectURL(url);
       const msg = document.getElementById('global-backup-msg');
       if (msg) {
-        msg.textContent = '导出成功，共 ' + localStorage.length + ' 个键';
-        setTimeout(() => { msg.textContent = ''; }, 3000);
+        msg.textContent = '导出成功，共 ' + localStorage.length + ' 个键（含所有 App 数据）';
+        setTimeout(() => { msg.textContent = ''; }, 4000);
       }
     });
   }
@@ -773,26 +848,27 @@ window.initSettings = function () {
       const file = this.files[0];
       if (!file) return;
       if (!confirm('导入全局备份将覆盖当前所有数据，确定继续吗？')) return;
-      const reader = new FileReader();
-      reader.onload = e => {
-        try {
-          const data = JSON.parse(e.target.result);
-          Object.entries(data).forEach(([k, v]) => {
-            try { localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v)); } catch (ex) {}
-          });
-          const msg = document.getElementById('global-backup-msg');
-          if (msg) msg.textContent = '导入成功，即将刷新页面…';
-          setTimeout(() => location.reload(), 1500);
-        } catch (err) { alert('导入失败：JSON 格式错误'); }
-      };
-      reader.readAsText(file);
+      importAllFromJson(file, () => {
+        const msg = document.getElementById('global-backup-msg');
+        if (msg) msg.textContent = '导入成功，即将刷新页面…';
+        setTimeout(() => location.reload(), 1500);
+      });
       this.value = '';
     });
   }
 
+  /* ---- 主页数据导出（含了了、家园、API、隐私等全部数据） ---- */
   const exportAllBtn = document.getElementById('export-all-btn');
-  if (exportAllBtn) exportAllBtn.addEventListener('click', () =>
-    downloadJson(collectData(ALL_DATA_KEYS), 'halo9_home_' + Date.now() + '.json'));
+  if (exportAllBtn) {
+    exportAllBtn.addEventListener('click', () => {
+      const data = Object.assign(
+        {},
+        collectHalo9Data(HOME_DATA_KEYS),
+        collectRawData(LIAO_RAW_KEYS)
+      );
+      downloadJson(data, 'halo9_主页数据_' + new Date().toISOString().slice(0, 10) + '.json');
+    });
+  }
 
   const importAllBtn = document.getElementById('import-all-btn');
   if (importAllBtn) importAllBtn.addEventListener('click', function () {
@@ -805,17 +881,22 @@ window.initSettings = function () {
     importAllFile.addEventListener('change', function () {
       const file = this.files[0];
       if (!file) return;
-      importJson(file, ALL_DATA_KEYS, () => {
-        alert('主页数据导入成功，即将刷新页面');
+      importAllFromJson(file, () => {
+        alert('数据导入成功，即将刷新页面');
         location.reload();
       });
       this.value = '';
     });
   }
 
+  /* ---- 美化数据导出 ---- */
   const exportThemeBtn = document.getElementById('export-theme-btn');
-  if (exportThemeBtn) exportThemeBtn.addEventListener('click', () =>
-    downloadJson(collectData(THEME_DATA_KEYS), 'halo9_theme_' + Date.now() + '.json'));
+  if (exportThemeBtn) {
+    exportThemeBtn.addEventListener('click', () => {
+      const data = collectHalo9Data(THEME_DATA_KEYS);
+      downloadJson(data, 'halo9_美化数据_' + new Date().toISOString().slice(0, 10) + '.json');
+    });
+  }
 
   const importThemeBtn = document.getElementById('import-theme-btn');
   if (importThemeBtn) importThemeBtn.addEventListener('click', function () {
@@ -828,18 +909,25 @@ window.initSettings = function () {
     importThemeFile.addEventListener('change', function () {
       const file = this.files[0];
       if (!file) return;
-      importJson(file, THEME_DATA_KEYS, () => {
-        applyWallpaper(sLoad('wallpaper', ''));
-        applyWallpaper2(sLoad('wallpaper2', ''));
-        customColors   = sLoad('customColors', {});   applyColors(customColors);
-        customIcons    = sLoad('customIcons', {});     restoreAllIcons();
+      importAllFromJson(file, () => {
+        wallpaperSrc  = sLoad('wallpaper',  '');
+        wallpaper2Src = sLoad('wallpaper2', '');
+        applyWallpaper(wallpaperSrc);
+        applyWallpaper2(wallpaper2Src);
+        customColors   = sLoad('customColors',   {}); applyColors(customColors);
+        customIcons    = sLoad('customIcons',    {}); restoreAllIcons();
         customAppNames = sLoad('customAppNames', {}); applyAllAppNames();
+        const darkOn = localStorage.getItem('halo9_darkMode') === 'true';
+        document.body.classList.toggle('dark-mode', darkOn);
+        const toggle = document.getElementById('dark-mode-toggle');
+        if (toggle) toggle.checked = darkOn;
         alert('美化数据导入成功');
       });
       this.value = '';
     });
   }
 
+  /* ---- 清除全部数据 ---- */
   const clearAllDataBtn = document.getElementById('clear-all-data-btn');
   if (clearAllDataBtn) {
     clearAllDataBtn.addEventListener('click', function () {
@@ -888,13 +976,14 @@ window.initSettings = function () {
 
   const pinAvatarFileInput = document.getElementById('privacy-pin-avatar-file');
   if (pinAvatarFileInput) {
-    pinAvatarFileInput.addEventListener('change', function () {
+    pinAvatarFileInput.addEventListener('change', async function () {
       const file = this.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = e => {
+      reader.onload = async e => {
+        const compressed = await compressImage(e.target.result, 300, 0.85);
         const prev = document.getElementById('privacy-pin-avatar-preview');
-        if (prev) prev.src = e.target.result;
+        if (prev) prev.src = compressed;
       };
       reader.readAsDataURL(file);
     });
@@ -902,11 +991,11 @@ window.initSettings = function () {
 
   const pinAvatarSaveBtn = document.getElementById('privacy-pin-avatar-save-btn');
   if (pinAvatarSaveBtn) {
-    pinAvatarSaveBtn.addEventListener('click', function () {
+    pinAvatarSaveBtn.addEventListener('click', async function () {
       const msgEl = document.getElementById('privacy-pin-avatar-msg');
       if (!msgEl) return;
       msgEl.style.color = '#e07a7a';
-      function applyAndSave(src) {
+      async function applyAndSave(src) {
         sSave('pinAvatar', src);
         const pinAvatarEl = document.getElementById('pin-avatar-img');
         if (pinAvatarEl) pinAvatarEl.src = src;
@@ -920,13 +1009,16 @@ window.initSettings = function () {
         const urlEl = document.getElementById('privacy-pin-avatar-url');
         const url   = urlEl ? urlEl.value.trim() : '';
         if (!url) { msgEl.textContent = '请输入图片 URL'; return; }
-        applyAndSave(url);
+        await applyAndSave(url);
       } else {
         const fileEl = document.getElementById('privacy-pin-avatar-file');
         const file   = fileEl ? fileEl.files[0] : null;
         if (!file) { msgEl.textContent = '请选择一张图片'; return; }
         const reader = new FileReader();
-        reader.onload = e => applyAndSave(e.target.result);
+        reader.onload = async e => {
+          const compressed = await compressImage(e.target.result, 300, 0.85);
+          await applyAndSave(compressed);
+        };
         reader.readAsDataURL(file);
       }
     });
