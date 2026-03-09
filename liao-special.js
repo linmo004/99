@@ -17,14 +17,17 @@ var editModeSelectedIds  = [];
    renderSpecialContent — 统一特殊内容渲染
    ============================================================ */
 function renderSpecialContent(content, msg) {
-  if (!content) return { html: '', isEmojiOnly: false, isSpecialOnly: false };
+  if (!content) return { html: '', isEmojiOnly: false, isTransferOnly: false };
 
   const raw = content;
 
-  const emojiOnlyRe   = /^\[.+?发送了一个表情包：(.+?)\]$/;
-  const specialOnlyRe = /^\[.+?(?:发送了一条语音|发起了一笔转账|发送了一张照片)：[\s\S]+?\]$/;
-  const isEmojiOnly   = emojiOnlyRe.test(raw.trim());
-  const isSpecialOnly = specialOnlyRe.test(raw.trim());
+  /* 纯表情包消息判断 */
+  const emojiOnlyRe = /^\[.+?发送了一个表情包：(.+?)\]$/;
+  /* 纯转账消息判断 */
+  const transferOnlyRe = /^\[.+?发起了一笔转账：[\s\S]+?\]$/;
+
+  const isEmojiOnly    = emojiOnlyRe.test(raw.trim());
+  const isTransferOnly = transferOnlyRe.test(raw.trim());
 
   function transferButtons(msgId, status) {
     if (status === 'accepted') return '<div class="transfer-inline-status accepted">已收款</div>';
@@ -49,6 +52,7 @@ function renderSpecialContent(content, msg) {
     const full = match[0];
 
     if (match[2] !== undefined) {
+      /* 表情包 */
       const emojiName = match[2].trim();
       const found     = liaoEmojis.find(e => e.name === emojiName);
       if (found) {
@@ -58,6 +62,7 @@ function renderSpecialContent(content, msg) {
       }
 
     } else if (match[3] !== undefined) {
+      /* 语音 */
       const voiceText = match[3].trim();
       const duration  = calcVoiceDuration(voiceText);
       result += '<div class="voice-bubble special-inline-bubble" data-voice-text="' + escHtml(voiceText) + '" title="点击查看语音内容">' +
@@ -67,6 +72,7 @@ function renderSpecialContent(content, msg) {
         '</div>';
 
     } else if (match[4] !== undefined) {
+      /* 转账 */
       const amount  = parseFloat(match[4]) || 0;
       const note    = match[5] ? match[5].trim() : '';
       const msgId   = msg ? (msg.id || '') : '';
@@ -85,6 +91,7 @@ function renderSpecialContent(content, msg) {
         '</div>';
 
     } else if (match[6] !== undefined) {
+      /* 假图片 */
       const desc      = match[6].trim();
       const shortDesc = desc.slice(0, 12) + (desc.length > 12 ? '…' : '');
       result += '<div class="fake-photo-bubble special-inline-bubble" data-photo-desc="' + escHtml(desc) + '">' +
@@ -104,7 +111,7 @@ function renderSpecialContent(content, msg) {
     result += escHtml(raw.slice(last));
   }
 
-  return { html: result, isEmojiOnly, isSpecialOnly };
+  return { html: result, isEmojiOnly, isTransferOnly };
 }
 
 /* ============================================================
@@ -145,7 +152,6 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
   tsEl.textContent   = formatFullTime(msg.ts);
   tsEl.addEventListener('click', (e) => {
     e.stopPropagation();
-    /* 编辑模式下点击气泡行进入单条编辑；普通模式下点击时间戳打开操作菜单 */
     if (editModeActive) {
       openEditModePanel(msg.id);
     } else {
@@ -168,11 +174,18 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
     bubbleInner += '<img class="real-image-bubble" src="' + escHtml(msg.content) + '" alt="图片">';
     bubbleEl.innerHTML = bubbleInner;
   } else {
-    const { html, isEmojiOnly, isSpecialOnly } = renderSpecialContent(msg.content || '', msg);
+    const { html, isEmojiOnly, isTransferOnly } = renderSpecialContent(msg.content || '', msg);
     bubbleInner += html;
     bubbleEl.innerHTML = bubbleInner;
-    if (isEmojiOnly)        bubbleEl.classList.add('bubble-emoji-only');
-    else if (isSpecialOnly) bubbleEl.classList.add('bubble-special-only');
+    /* 表情包消息：无边框无背景 */
+    if (isEmojiOnly) {
+      bubbleEl.classList.add('bubble-emoji-only');
+    }
+    /* 转账消息：无边框无背景 */
+    else if (isTransferOnly) {
+      bubbleEl.classList.add('bubble-transfer-only');
+    }
+    /* 其他（语音/假图片/照片/普通文字）：保留气泡 */
   }
 
   const avatarEl = document.createElement('img');
@@ -190,7 +203,6 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
     row.appendChild(tsEl);
   }
 
-  /* 编辑模式下给每行加选择覆盖层 */
   if (editModeActive) {
     applyEditModeToRow(row, msg.id);
   }
@@ -320,7 +332,7 @@ function bindBubbleEvents(row, msg) {
 }
 
 /* ============================================================
-   消息操作菜单（时间戳点击，与编辑模式完全分开）
+   消息操作菜单
    ============================================================ */
 function openMsgActionMenu(e, msgId) {
   if (currentChatIdx < 0) return;
@@ -493,7 +505,6 @@ function initSpecialBar() {
   document.getElementById('csb-rolephone').addEventListener('click', () => {
     alert('角色手机功能建设中，敬请期待');
   });
-  /* 编辑键：进入/退出消息编辑模式 */
   document.getElementById('csb-edit').addEventListener('click', () => {
     toggleEditMode();
   });
@@ -511,33 +522,27 @@ function toggleEditMode() {
   const btn = document.getElementById('csb-edit');
   btn.classList.toggle('active', editModeActive);
 
-  /* 显示/隐藏编辑模式工具栏 */
   const toolbar = document.getElementById('edit-mode-toolbar');
   if (toolbar) toolbar.style.display = editModeActive ? 'flex' : 'none';
 
-  /* 重新渲染消息列表以应用/移除编辑模式覆盖层 */
   renderChatMessages();
 }
 
 /* ---------- 给消息行添加编辑模式点击覆盖层 ---------- */
 function applyEditModeToRow(row, msgId) {
-  /* 整行点击：进入单条消息编辑面板 */
   row.style.cursor = 'pointer';
   row.addEventListener('click', function onEditClick(e) {
     if (!editModeActive) return;
-    /* 阻止冒泡避免触发气泡内部按钮 */
     e.stopPropagation();
     openEditModePanel(msgId);
   });
 
-  /* 长按/双击：多选切换 */
   row.addEventListener('dblclick', (e) => {
     if (!editModeActive) return;
     e.stopPropagation();
     toggleEditModeSelect(msgId, row);
   });
 
-  /* 若已在选中列表里，标记选中样式 */
   if (editModeSelectedIds.includes(msgId)) {
     row.classList.add('edit-mode-selected');
   }
@@ -574,18 +579,15 @@ function openEditModePanel(msgId) {
   if (msgIdx < 0) return;
   const msg = chat.messages[msgIdx];
 
-  /* 填充编辑面板内容 */
-  const panel = document.getElementById('edit-mode-panel');
-  const textarea = document.getElementById('edit-mode-content');
+  const panel     = document.getElementById('edit-mode-panel');
+  const textarea  = document.getElementById('edit-mode-content');
   const timeInput = document.getElementById('edit-mode-time');
   if (!panel || !textarea || !timeInput) return;
 
   textarea.value  = msg.content || '';
   timeInput.value = formatFullTime(msg.ts);
 
-  /* 存储当前编辑的 msgId */
   panel.dataset.editMsgId = msgId;
-
   panel.style.display = 'flex';
 }
 
@@ -631,23 +633,11 @@ document.getElementById('edit-mode-fix-ts').addEventListener('click', () => {
   const msg = chat.messages[msgIdx];
 
   const raw = msg.content || '';
-
-  /*
-   * 拆分逻辑：
-   * 匹配 [ts:数字] 开头的片段，每个片段成为独立消息。
-   * 格式：[ts:数字] 消息内容 [ts:数字] 消息内容 ...
-   * 也处理换行分隔的情况。
-   */
   const tsPattern = /\[ts:\d+\]\s*/g;
-
-  /* 先把所有 [ts:数字] 前缀剥离，得到纯文本 */
-  const cleaned = raw.replace(tsPattern, '\n').trim();
-
-  /* 按换行拆分成多行，过滤空行 */
-  const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const cleaned   = raw.replace(tsPattern, '\n').trim();
+  const lines     = cleaned.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
   if (lines.length <= 1) {
-    /* 只有一行或无需拆分，直接更新内容 */
     msg.content = lines[0] || raw.replace(tsPattern, '').trim();
     lSave('chats', liaoChats);
     document.getElementById('edit-mode-content').value = msg.content;
@@ -655,14 +645,11 @@ document.getElementById('edit-mode-fix-ts').addEventListener('click', () => {
     return;
   }
 
-  /* 多行：将原消息替换为第一行，其余行在其后插入为新消息 */
   const baseTs   = msg.ts || Date.now();
   const baseRole = msg.role || 'assistant';
 
-  /* 更新原消息内容为第一行 */
   msg.content = lines[0];
 
-  /* 构建后续新消息并插入到原消息之后 */
   const newMsgs = lines.slice(1).map((line, i) => ({
     role:    baseRole,
     type:    'text',
@@ -671,7 +658,6 @@ document.getElementById('edit-mode-fix-ts').addEventListener('click', () => {
     id:      'msg_' + (baseTs + i + 1) + '_' + Math.random().toString(36).slice(2)
   }));
 
-  /* 插入到 msgIdx + 1 位置 */
   chat.messages.splice(msgIdx + 1, 0, ...newMsgs);
 
   lSave('chats', liaoChats);

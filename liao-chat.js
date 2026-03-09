@@ -21,7 +21,7 @@ function renderChatList() {
     const lastMsg = msgs.length ? msgs[msgs.length - 1] : null;
     let preview   = '暂无消息';
     if (lastMsg) {
-      if (lastMsg.recalled)   preview = '[撤回了一条消息]';
+      if (lastMsg.recalled)         preview = '[撤回了一条消息]';
       else if (lastMsg.type === 'image') preview = '[图片]';
       else preview = lastMsg.content || '暂无消息';
     }
@@ -103,7 +103,6 @@ document.getElementById('liao-role-confirm-btn').addEventListener('click', () =>
   liaoRoles.push(role);
   lSave('roles', liaoRoles);
 
-  /* 新建 chat 时初始化 memory 字段 */
   liaoChats.push(initChatMemory({
     roleId: role.id, messages: [],
     chatUserName: liaoUserName, chatUserAvatar: liaoUserAvatar, chatUserSetting: ''
@@ -199,7 +198,7 @@ function initChatMemory(chat) {
 liaoChats.forEach(c => initChatMemory(c));
 
 /* ============================================================
-   聊天界面 — openChatView（唯一定义处）
+   聊天界面 — openChatView
    ============================================================ */
 function openChatView(chatIdx) {
   currentChatIdx = chatIdx;
@@ -207,7 +206,6 @@ function openChatView(chatIdx) {
   const role = liaoRoles.find(r => r.id === chat.roleId);
   if (!role) return;
 
-  /* 确保 memory 字段存在 */
   initChatMemory(chat);
 
   document.getElementById('chat-view-title').textContent = role.nickname || role.realname;
@@ -215,6 +213,13 @@ function openChatView(chatIdx) {
   currentQuoteMsgIdx = -1;
   const quoteBar = document.getElementById('chat-quote-bar');
   if (quoteBar) quoteBar.style.display = 'none';
+
+  /* 推荐栏清空隐藏 */
+  const suggestBar = document.getElementById('emoji-suggest-bar');
+  if (suggestBar) {
+    suggestBar.innerHTML = '';
+    suggestBar.classList.remove('visible');
+  }
 
   const emojiPanel = document.getElementById('emoji-panel');
   if (emojiPanel) emojiPanel.style.display = 'none';
@@ -242,6 +247,13 @@ function closeChatView() {
   const emojiPanel = document.getElementById('emoji-panel');
   if (emojiPanel) emojiPanel.style.display = 'none';
   emojiPanelOpen = false;
+
+  /* 推荐栏清空隐藏 */
+  const suggestBar = document.getElementById('emoji-suggest-bar');
+  if (suggestBar) {
+    suggestBar.innerHTML = '';
+    suggestBar.classList.remove('visible');
+  }
 }
 
 document.getElementById('chat-view-back').addEventListener('click', closeChatView);
@@ -285,6 +297,68 @@ document.getElementById('chat-view-input').addEventListener('keydown', function 
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendUserMessage(); }
 });
 
+/* ---------- 输入框联想表情包推荐栏 ---------- */
+document.getElementById('chat-view-input').addEventListener('input', function () {
+  updateEmojiSuggestBar(this.value);
+});
+
+function updateEmojiSuggestBar(inputVal) {
+  const bar = document.getElementById('emoji-suggest-bar');
+  if (!bar) return;
+
+  const keyword = (inputVal || '').trim();
+
+  if (!keyword || !liaoEmojis || !liaoEmojis.length) {
+    bar.innerHTML = '';
+    bar.classList.remove('visible');
+    return;
+  }
+
+  const lower   = keyword.toLowerCase();
+  const matched = liaoEmojis.filter(e =>
+    e.name && e.name.toLowerCase().includes(lower)
+  );
+
+  if (!matched.length) {
+    bar.innerHTML = '';
+    bar.classList.remove('visible');
+    return;
+  }
+
+  const toShow = matched.slice(0, 20);
+
+  bar.innerHTML = '';
+  toShow.forEach(emoji => {
+    const item = document.createElement('div');
+    item.className = 'emoji-suggest-item';
+
+    const img     = document.createElement('img');
+    img.src       = emoji.url;
+    img.alt       = emoji.name || '';
+    img.title     = emoji.name || '';
+    img.loading   = 'lazy';
+
+    const nameEl       = document.createElement('span');
+    nameEl.className   = 'emoji-suggest-item-name';
+    nameEl.textContent = emoji.name || '';
+
+    item.appendChild(img);
+    item.appendChild(nameEl);
+
+    item.addEventListener('click', () => {
+      sendEmojiMsg(emoji);
+      const inputEl = document.getElementById('chat-view-input');
+      if (inputEl) inputEl.value = '';
+      bar.innerHTML = '';
+      bar.classList.remove('visible');
+    });
+
+    bar.appendChild(item);
+  });
+
+  bar.classList.add('visible');
+}
+
 function sendUserMessage() {
   if (currentChatIdx < 0) return;
   const input   = document.getElementById('chat-view-input');
@@ -309,6 +383,13 @@ function sendUserMessage() {
   chat.messages.push(msgObj);
   lSave('chats', liaoChats);
   input.value = '';
+
+  /* 发送后清空推荐栏 */
+  const suggestBar = document.getElementById('emoji-suggest-bar');
+  if (suggestBar) {
+    suggestBar.innerHTML = '';
+    suggestBar.classList.remove('visible');
+  }
 
   currentQuoteMsgIdx = -1;
   const quoteBar = document.getElementById('chat-quote-bar');
@@ -349,9 +430,9 @@ function openChatSettings() {
   document.getElementById('cs-custom-css').value         = beauty.customCSS        || '';
 
   const settings = chat.chatSettings || {};
-  document.getElementById('cs-max-api-msgs').value          = settings.maxApiMsgs          !== undefined ? settings.maxApiMsgs          : 0;
-  document.getElementById('cs-max-load-msgs').value         = settings.maxLoadMsgs         !== undefined ? settings.maxLoadMsgs         : 50;
-  document.getElementById('cs-auto-memory-interval').value  = settings.autoMemoryInterval  !== undefined ? settings.autoMemoryInterval  : 0;
+  document.getElementById('cs-max-api-msgs').value         = settings.maxApiMsgs         !== undefined ? settings.maxApiMsgs         : 0;
+  document.getElementById('cs-max-load-msgs').value        = settings.maxLoadMsgs        !== undefined ? settings.maxLoadMsgs        : 50;
+  document.getElementById('cs-auto-memory-interval').value = settings.autoMemoryInterval !== undefined ? settings.autoMemoryInterval : 0;
 
   const tsCheck = document.getElementById('cs-hide-timestamp');
   if (tsCheck) tsCheck.checked = !!(settings.hideTimestamp);
@@ -378,7 +459,6 @@ function switchChatSettingsTab(tabId) {
   document.querySelectorAll('.cs-page').forEach(page => {
     page.classList.toggle('active', page.id === tabId + '-page');
   });
-  /* 切换到记忆Tab时渲染记忆列表 */
   if (tabId === 'cs-tab-memory') {
     renderMemoryLists();
     renderOtherMemoryList();
@@ -544,6 +624,12 @@ function applyBeautySettings(beauty) {
       background: ${uColor} !important;
       border-radius: ${uRadius}px 4px ${uRadius}px ${uRadius}px !important;
       font-size: ${fSize}px !important;
+    }
+    #liao-chat-messages .bubble-emoji-only,
+    #liao-chat-messages .bubble-transfer-only {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
     }
     ${custom}
   `;

@@ -380,7 +380,8 @@ body.timestamp-hidden .chat-msg-timestamp {
 }
 
 /* ---- 纯特殊消息气泡：无边框无背景 ---- */
-.bubble-special-only {
+/* 注意：仅对转账消息生效，语音/假图片/照片保留气泡 */
+.bubble-transfer-only {
   background: transparent !important;
   border: none !important;
   padding: 0 !important;
@@ -466,13 +467,14 @@ body.timestamp-hidden .chat-msg-timestamp {
 
 .emoji-sidebar-btn:active { background: rgba(153,200,237,0.14); }
 
-/* ---- 表情包网格：3列给名字留空间 ---- */
+/* ---- 表情包网格：4列统一大小，上下滚动，不左右滚动 ---- */
 .emoji-panel-grid {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   padding: 8px;
   align-content: start;
@@ -493,14 +495,17 @@ body.timestamp-hidden .chat-msg-timestamp {
 
 .emoji-grid-wrap:active { opacity: 0.72; }
 
+/* ---- 表情包网格项图片：统一大小 ---- */
 .emoji-grid-item {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 1 / 1;
   border-radius: 8px;
   object-fit: cover;
   display: block;
   border: 1.5px solid transparent;
   transition: border-color .13s;
+  min-width: 0;
+  min-height: 0;
 }
 
 .emoji-grid-wrap:active .emoji-grid-item {
@@ -581,8 +586,6 @@ body.timestamp-hidden .chat-msg-timestamp {
   color: #fff;
   font-weight: 700;
 }
-
-.emoji-manage-item.selected .emoji-manage-check { display: flex; }
 
 /* ---- 分类标签 ---- */
 .emoji-cat-tag {
@@ -818,6 +821,69 @@ body.timestamp-hidden .chat-msg-timestamp {
 
 .role-card-settings-btn:active { background: rgba(153,200,237,0.26); }
 
+/* ============================================================
+   表情包输入联想推荐栏
+   ============================================================ */
+.emoji-suggest-bar {
+  display: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.97);
+  border-top: 1px solid rgba(153,200,237,0.18);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  flex-shrink: 0;
+  max-height: 72px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.emoji-suggest-bar::-webkit-scrollbar { display: none; }
+
+.emoji-suggest-bar.visible {
+  display: flex;
+}
+
+.emoji-suggest-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  padding: 2px 4px;
+  border-radius: 8px;
+  transition: background .13s;
+}
+
+.emoji-suggest-item:active {
+  background: rgba(153,200,237,0.18);
+}
+
+.emoji-suggest-item img {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+  display: block;
+}
+
+.emoji-suggest-item-name {
+  font-size: 9.5px;
+  color: var(--text-light, #9aafc4);
+  white-space: nowrap;
+  max-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  line-height: 1.2;
+}
+
 /* ---- 暗色模式适配 ---- */
 body.dark-mode .chat-special-bar {
   background: rgba(28,30,40,0.96);
@@ -911,6 +977,18 @@ body.dark-mode .cs-toggle input:checked + .cs-toggle-slider {
   background: var(--primary, #8bbfdf);
 }
 
+body.dark-mode .emoji-suggest-bar {
+  background: rgba(28,30,40,0.97);
+  border-top-color: rgba(80,120,160,0.18);
+}
+
+body.dark-mode .emoji-suggest-item:active {
+  background: rgba(80,120,160,0.22);
+}
+
+body.dark-mode .emoji-suggest-item-name {
+  color: #5a6a80;
+}
 
 /* ---- 编辑模式选中消息高亮 ---- */
 .chat-msg-row.edit-mode-selected .chat-msg-bubble {

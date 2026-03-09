@@ -21,6 +21,9 @@
     <button class="chat-quote-bar-close" id="chat-quote-bar-close">×</button>
   </div>
 
+  <!-- 表情包输入联想推荐栏（默认隐藏，输入匹配时显示） -->
+  <div class="emoji-suggest-bar" id="emoji-suggest-bar"></div>
+
   <!-- 输入栏 -->
   <div class="chat-view-inputbar" id="chat-view-inputbar">
     <input class="chat-view-input" id="chat-view-input"
@@ -69,7 +72,7 @@
   <!-- 表情包面板 -->
   <div class="emoji-panel" id="emoji-panel" style="display:none;">
     <div class="emoji-panel-sidebar" id="emoji-panel-sidebar">
-      <button class="emoji-sidebar-btn active" data-cat="all">全部</button>
+      `<button class="emoji-sidebar-btn active" data-cat="all">全部</button>
       <div id="emoji-cat-list"></div>
       <button class="emoji-sidebar-btn" id="emoji-import-btn">导入</button>
       <button class="emoji-sidebar-btn" id="emoji-manage-btn">管理</button>
@@ -316,7 +319,6 @@
   <div class="liao-bubble-modal-box">
     <div class="liao-modal-title">发送语音</div>
     <input class="liao-modal-input" id="liao-voice-input" placeholder="输入语音内容…">
-    
     <div class="liao-modal-btns">
       <button class="liao-btn-primary" id="liao-voice-confirm">发送</button>
       <button class="liao-btn-ghost" id="liao-voice-cancel">取消</button>
