@@ -1,22 +1,111 @@
 /* ============================================================
-   liao-special.js — 特殊功能状态栏 / 时间戳 / 消息操作
-                     表情包 / 语音 / 转账 / 假图片 / 真图片
-   注意：openChatView / sendUserMessage / renderRoleLib
-         均在 liao-chat.js 中唯一定义，此文件不重定义它们。
+   liao-special.js — 气泡渲染 / 消息操作 / 特殊功能状态栏
+                     语音 / 转账 / 假图片 / 真图片
    ============================================================ */
 
-/* ---------- 全局状态（由 liao-chat.js 之后加载，可安全引用） ---------- */
-var liaoEmojis    = lLoad('emojis',    []);
-var liaoEmojiCats = lLoad('emojiCats', ['默认']);
-
-var currentQuoteMsgIdx   = -1;
-var pendingImageSrc       = '';
-var emojiManageSelectedIds = [];
-var emojiManageCurrentCat  = 'all';
+/* ---------- 全局状态 ---------- */
+var currentQuoteMsgIdx    = -1;
+var pendingImageSrc        = '';
 var currentTransferMsgId   = null;
 var editingMsgIdx          = -1;
-var emojiPanelOpen         = false;
-var emojiCurrentCat        = 'all';
+
+/* ---- 消息编辑模式状态 ---- */
+var editModeActive       = false;
+var editModeSelectedIds  = [];
+
+/* ============================================================
+   renderSpecialContent — 统一特殊内容渲染
+   ============================================================ */
+function renderSpecialContent(content, msg) {
+  if (!content) return { html: '', isEmojiOnly: false, isSpecialOnly: false };
+
+  const raw = content;
+
+  const emojiOnlyRe   = /^\[.+?发送了一个表情包：(.+?)\]$/;
+  const specialOnlyRe = /^\[.+?(?:发送了一条语音|发起了一笔转账|发送了一张照片)：[\s\S]+?\]$/;
+  const isEmojiOnly   = emojiOnlyRe.test(raw.trim());
+  const isSpecialOnly = specialOnlyRe.test(raw.trim());
+
+  function transferButtons(msgId, status) {
+    if (status === 'accepted') return '<div class="transfer-inline-status accepted">已收款</div>';
+    if (status === 'declined') return '<div class="transfer-inline-status declined">已拒绝</div>';
+    return '<div class="transfer-inline-actions">' +
+      '<button class="transfer-inline-accept" data-transfer-id="' + escHtml(msgId) + '">接受</button>' +
+      '<button class="transfer-inline-decline" data-transfer-id="' + escHtml(msgId) + '">拒绝</button>' +
+      '</div>';
+  }
+
+  const globalRe = /\[(.+?)(?:发送了一个表情包：(.+?)|发送了一条语音：([\s\S]+?)|发起了一笔转账：(\d+\.?\d*)元(?:，备注：([\s\S]+?))?|发送了一张照片：([\s\S]+?))\]/g;
+
+  let result = '';
+  let last   = 0;
+  let match;
+
+  while ((match = globalRe.exec(raw)) !== null) {
+    if (match.index > last) {
+      result += escHtml(raw.slice(last, match.index));
+    }
+
+    const full = match[0];
+
+    if (match[2] !== undefined) {
+      const emojiName = match[2].trim();
+      const found     = liaoEmojis.find(e => e.name === emojiName);
+      if (found) {
+        result += '<img class="emoji-msg-bubble" src="' + escHtml(found.url) + '" alt="' + escHtml(emojiName) + '" title="' + escHtml(emojiName) + '">';
+      } else {
+        result += escHtml(full);
+      }
+
+    } else if (match[3] !== undefined) {
+      const voiceText = match[3].trim();
+      const duration  = calcVoiceDuration(voiceText);
+      result += '<div class="voice-bubble special-inline-bubble" data-voice-text="' + escHtml(voiceText) + '" title="点击查看语音内容">' +
+        '<span class="voice-bubble-icon">◎</span>' +
+        '<div class="voice-bubble-bar">' + buildVoiceWaves(duration) + '</div>' +
+        '<span class="voice-bubble-duration">' + duration + '"</span>' +
+        '</div>';
+
+    } else if (match[4] !== undefined) {
+      const amount  = parseFloat(match[4]) || 0;
+      const note    = match[5] ? match[5].trim() : '';
+      const msgId   = msg ? (msg.id || '') : '';
+      const status  = msg ? (msg.transferStatus || 'pending') : 'pending';
+      const isRole  = msg ? (msg.role === 'assistant') : false;
+      const btnHtml = isRole
+        ? transferButtons(msgId, status)
+        : '<div class="transfer-inline-status">' + (status === 'accepted' ? '已收款' : status === 'declined' ? '已拒绝' : '已发出') + '</div>';
+      result += '<div class="transfer-inline-card" data-transfer-id="' + escHtml(msgId) + '">' +
+        '<div class="transfer-inline-header">' +
+        '<span class="transfer-bubble-icon">◇</span>' +
+        '<span class="transfer-bubble-amount">' + amount.toFixed(2) + ' 元</span>' +
+        '</div>' +
+        (note ? '<div class="transfer-bubble-note">' + escHtml(note) + '</div>' : '') +
+        btnHtml +
+        '</div>';
+
+    } else if (match[6] !== undefined) {
+      const desc      = match[6].trim();
+      const shortDesc = desc.slice(0, 12) + (desc.length > 12 ? '…' : '');
+      result += '<div class="fake-photo-bubble special-inline-bubble" data-photo-desc="' + escHtml(desc) + '">' +
+        '<div class="fake-photo-bubble-inner">' +
+        '<span class="fake-photo-icon">▤</span>' +
+        '<span class="fake-photo-label">' + escHtml(shortDesc) + '</span>' +
+        '</div>' +
+        '</div>';
+    } else {
+      result += escHtml(full);
+    }
+
+    last = match.index + match[0].length;
+  }
+
+  if (last < raw.length) {
+    result += escHtml(raw.slice(last));
+  }
+
+  return { html: result, isEmojiOnly, isSpecialOnly };
+}
 
 /* ============================================================
    appendMessageBubble — 全类型气泡渲染
@@ -31,14 +120,11 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
     msg.id = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2);
   }
 
-  /* 撤回消息 */
   if (msg.recalled) {
     const recallRow = document.createElement('div');
     recallRow.className     = 'recall-notice';
     recallRow.dataset.msgId = msg.id;
-    const who = isUser
-      ? '你'
-      : (role ? (role.nickname || role.realname) : '对方');
+    const who = isUser ? '你' : (role ? (role.nickname || role.realname) : '对方');
     recallRow.textContent = who + ' 撤回了一条消息';
     recallRow.addEventListener('click', () => {
       document.getElementById('liao-recall-view-content').textContent = msg.recalledContent || '';
@@ -53,70 +139,41 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
   row.className     = 'chat-msg-row' + (isUser ? ' user-row' : '');
   row.dataset.msgId = msg.id;
 
-  /* 时间戳元素 */
   const tsEl = document.createElement('span');
   tsEl.className     = 'chat-msg-timestamp';
   tsEl.dataset.msgId = msg.id;
   tsEl.textContent   = formatFullTime(msg.ts);
   tsEl.addEventListener('click', (e) => {
     e.stopPropagation();
-    openMsgActionMenu(e, msg.id);
+    /* 编辑模式下点击气泡行进入单条编辑；普通模式下点击时间戳打开操作菜单 */
+    if (editModeActive) {
+      openEditModePanel(msg.id);
+    } else {
+      openMsgActionMenu(e, msg.id);
+    }
   });
-
-  /* 气泡内容 */
-  const msgType   = msg.type || 'text';
-  let bubbleInner = '';
-
-  if (msg.quoteContent) {
-    bubbleInner += `<div class="msg-quote-block">${escHtml(msg.quoteContent)}</div>`;
-  }
-
-  if (msgType === 'voice') {
-    const duration = calcVoiceDuration(msg.content);
-    bubbleInner += `<div class="voice-bubble" title="点击查看语音内容">
-      <span class="voice-bubble-icon">◎</span>
-      <div class="voice-bubble-bar">${buildVoiceWaves(duration)}</div>
-      <span class="voice-bubble-duration">${duration}"</span>
-    </div>`;
-
-  } else if (msgType === 'transfer') {
-    const statusText  = msg.transferStatus === 'accepted' ? '已收款'
-                      : msg.transferStatus === 'declined' ? '已拒绝' : '待收款';
-    const statusClass = msg.transferStatus === 'accepted' ? 'accepted'
-                      : msg.transferStatus === 'declined' ? 'declined' : '';
-    bubbleInner += `<div class="transfer-bubble" data-msg-id="${escHtml(msg.id)}">
-      <div class="transfer-bubble-header">
-        <span class="transfer-bubble-icon">◇</span>
-        <span class="transfer-bubble-amount">${parseFloat(msg.amount || 0).toFixed(2)} 元</span>
-      </div>
-      ${msg.note ? `<div class="transfer-bubble-note">${escHtml(msg.note)}</div>` : ''}
-      <div class="transfer-bubble-status ${statusClass}">${statusText}</div>
-    </div>`;
-
-  } else if (msgType === 'fake_photo') {
-    const shortDesc = (msg.content || '照片').slice(0, 12) + ((msg.content || '').length > 12 ? '…' : '');
-    bubbleInner += `<div class="fake-photo-bubble" data-photo-desc="${escHtml(msg.content)}">
-      <div class="fake-photo-bubble-inner">
-        <span class="fake-photo-icon">▤</span>
-        <span class="fake-photo-label">${escHtml(shortDesc)}</span>
-      </div>
-    </div>`;
-
-  } else if (msgType === 'image') {
-    bubbleInner += `<img class="real-image-bubble" src="${escHtml(msg.content)}" alt="图片">`;
-
-  } else if (msgType === 'emoji') {
-    bubbleInner += `<img class="emoji-msg-bubble" src="${escHtml(msg.content)}"
-      alt="${escHtml(msg.emojiName || '表情包')}"
-      title="${escHtml(msg.emojiName || '')}">`;
-
-  } else {
-    bubbleInner += escHtml(msg.content);
-  }
 
   const bubbleEl = document.createElement('div');
   bubbleEl.className = 'chat-msg-bubble';
-  bubbleEl.innerHTML = bubbleInner;
+
+  let bubbleInner = '';
+
+  if (msg.quoteContent) {
+    bubbleInner += '<div class="msg-quote-block">' + escHtml(msg.quoteContent) + '</div>';
+  }
+
+  const msgType = msg.type || 'text';
+
+  if (msgType === 'image') {
+    bubbleInner += '<img class="real-image-bubble" src="' + escHtml(msg.content) + '" alt="图片">';
+    bubbleEl.innerHTML = bubbleInner;
+  } else {
+    const { html, isEmojiOnly, isSpecialOnly } = renderSpecialContent(msg.content || '', msg);
+    bubbleInner += html;
+    bubbleEl.innerHTML = bubbleInner;
+    if (isEmojiOnly)        bubbleEl.classList.add('bubble-emoji-only');
+    else if (isSpecialOnly) bubbleEl.classList.add('bubble-special-only');
+  }
 
   const avatarEl = document.createElement('img');
   avatarEl.className = 'chat-msg-avatar' + (isUser ? ' user-avatar' : '');
@@ -131,6 +188,11 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
     row.appendChild(avatarEl);
     row.appendChild(bubbleEl);
     row.appendChild(tsEl);
+  }
+
+  /* 编辑模式下给每行加选择覆盖层 */
+  if (editModeActive) {
+    applyEditModeToRow(row, msg.id);
   }
 
   if (animate) {
@@ -160,7 +222,26 @@ function formatFullTime(ts) {
   const H  = String(d.getHours()).padStart(2, '0');
   const Mi = String(d.getMinutes()).padStart(2, '0');
   const S  = String(d.getSeconds()).padStart(2, '0');
-  return `${Y}-${Mo}-${D} ${H}:${Mi}:${S}`;
+  return Y + '-' + Mo + '-' + D + ' ' + H + ':' + Mi + ':' + S;
+}
+
+/* ---------- 动态时间描述（记忆宫殿用） ---------- */
+function formatMemoryTime(ts) {
+  if (!ts) return '';
+  const now      = Date.now();
+  const diffMs   = now - ts;
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffDays < 1)   return '今天';
+  if (diffDays < 2)   return '昨天';
+  if (diffDays < 3)   return '前天';
+  if (diffDays < 7)   return diffDays + '天前';
+  if (diffDays < 14)  return '上周';
+  if (diffDays < 30)  return diffDays + '天前';
+  if (diffDays < 60)  return '上个月';
+  if (diffDays < 365) return Math.floor(diffDays / 30) + '个月前';
+  if (diffDays < 730) return '去年';
+  return Math.floor(diffDays / 365) + '年前';
 }
 
 /* ---------- 语音时长 ---------- */
@@ -174,51 +255,72 @@ function buildVoiceWaves(duration) {
   const heights = [8, 13, 18, 14, 10, 16, 12, 9, 15, 11, 17, 13, 8, 12];
   let html = '';
   for (let i = 0; i < count; i++) {
-    html += `<span class="voice-bubble-wave" style="height:${heights[i % heights.length]}px;"></span>`;
+    html += '<span class="voice-bubble-wave" style="height:' + heights[i % heights.length] + 'px;"></span>';
   }
   return html;
 }
 
 /* ---------- 气泡内部事件绑定 ---------- */
 function bindBubbleEvents(row, msg) {
-  const transferBubble = row.querySelector('.transfer-bubble');
-  if (transferBubble) {
-    transferBubble.addEventListener('click', () => {
-      if (msg.transferStatus !== 'pending') return;
-      currentTransferMsgId = msg.id;
-      document.getElementById('liao-transfer-accept-info').innerHTML =
-        `转账金额：<b>${parseFloat(msg.amount || 0).toFixed(2)} 元</b>` +
-        (msg.note ? `<br>备注：${escHtml(msg.note)}` : '');
-      document.getElementById('liao-transfer-accept-modal').style.display = 'flex';
+  row.querySelectorAll('.voice-bubble').forEach(el => {
+    el.addEventListener('click', () => {
+      if (editModeActive) return;
+      const text = el.dataset.voiceText || msg.content || '';
+      document.getElementById('liao-voice-view-content').textContent = text;
+      document.getElementById('liao-voice-view-modal').style.display = 'flex';
     });
-  }
+  });
 
-  const fakePic = row.querySelector('.fake-photo-bubble');
-  if (fakePic) {
-    fakePic.addEventListener('click', () => {
-      document.getElementById('liao-fake-photo-content').textContent = msg.content || '';
+  row.querySelectorAll('.fake-photo-bubble').forEach(el => {
+    el.addEventListener('click', () => {
+      if (editModeActive) return;
+      const desc = el.dataset.photoDesc || msg.content || '';
+      document.getElementById('liao-fake-photo-content').textContent = desc;
       document.getElementById('liao-fake-photo-modal').style.display = 'flex';
     });
-  }
+  });
+
+  row.querySelectorAll('.transfer-inline-accept').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (editModeActive) return;
+      if (currentChatIdx < 0) return;
+      const chat = liaoChats[currentChatIdx];
+      const m    = chat.messages.find(x => x.id === msg.id);
+      if (m && m.transferStatus === 'pending') {
+        m.transferStatus = 'accepted';
+        lSave('chats', liaoChats);
+        renderChatMessages();
+      }
+    });
+  });
+
+  row.querySelectorAll('.transfer-inline-decline').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (editModeActive) return;
+      if (currentChatIdx < 0) return;
+      const chat = liaoChats[currentChatIdx];
+      const m    = chat.messages.find(x => x.id === msg.id);
+      if (m && m.transferStatus === 'pending') {
+        m.transferStatus = 'declined';
+        lSave('chats', liaoChats);
+        renderChatMessages();
+      }
+    });
+  });
 
   const realImg = row.querySelector('.real-image-bubble');
   if (realImg) {
     realImg.addEventListener('click', () => {
+      if (editModeActive) return;
       window.open(msg.content, '_blank');
-    });
-  }
-
-  const voiceBubble = row.querySelector('.voice-bubble');
-  if (voiceBubble) {
-    voiceBubble.addEventListener('click', () => {
-      document.getElementById('liao-voice-view-content').textContent = msg.content || '';
-      document.getElementById('liao-voice-view-modal').style.display = 'flex';
     });
   }
 }
 
 /* ============================================================
-   消息操作菜单
+   消息操作菜单（时间戳点击，与编辑模式完全分开）
    ============================================================ */
 function openMsgActionMenu(e, msgId) {
   if (currentChatIdx < 0) return;
@@ -261,7 +363,7 @@ function openMsgActionMenu(e, msgId) {
 
   actions.push({ label: '收藏', fn: () => {
     const groupKey = isUser
-      ? `角色 ${role ? (role.nickname || role.realname) : ''} 的收藏`
+      ? '角色 ' + (role ? (role.nickname || role.realname) : '') + ' 的收藏'
       : '我的收藏';
     addFavorite({
       roleId:     chat.roleId,
@@ -322,14 +424,13 @@ function closeActionMenu() {
   document.getElementById('liao-msg-action-menu').style.display = 'none';
 }
 
-/* ---------- 消息编辑 ---------- */
+/* ---------- 时间戳菜单的消息编辑弹窗 ---------- */
 document.getElementById('liao-msg-edit-confirm').addEventListener('click', () => {
   if (editingMsgIdx < 0 || currentChatIdx < 0) return;
   const chat = liaoChats[currentChatIdx];
   const msg  = chat.messages[editingMsgIdx];
   const newContent = document.getElementById('liao-msg-edit-content').value.trim();
   const newTimeStr = document.getElementById('liao-msg-edit-time').value.trim();
-
   if (newContent) msg.content = newContent;
   if (newTimeStr) {
     const parsed = Date.parse(newTimeStr.replace(/-/g, '/'));
@@ -352,17 +453,13 @@ document.getElementById('chat-quote-bar-close').addEventListener('click', () => 
   document.getElementById('chat-quote-bar').style.display = 'none';
 });
 
-/* ---------- 撤回查看关闭 ---------- */
+/* ---------- 弹窗关闭 ---------- */
 document.getElementById('liao-recall-view-close').addEventListener('click', () => {
   document.getElementById('liao-recall-view-modal').style.display = 'none';
 });
-
-/* ---------- */
 document.getElementById('liao-voice-view-close').addEventListener('click', () => {
   document.getElementById('liao-voice-view-modal').style.display = 'none';
 });
-
-/* ---------- 假图片关闭 ---------- */
 document.getElementById('liao-fake-photo-close').addEventListener('click', () => {
   document.getElementById('liao-fake-photo-modal').style.display = 'none';
 });
@@ -371,30 +468,21 @@ document.getElementById('liao-fake-photo-close').addEventListener('click', () =>
    特殊功能状态栏
    ============================================================ */
 function initSpecialBar() {
-  document.getElementById('csb-ai').addEventListener('click', () => {
-    triggerAiReply();
-  });
-
-  document.getElementById('csb-emoji').addEventListener('click', () => {
-    toggleEmojiPanel();
-  });
-
+  document.getElementById('csb-ai').addEventListener('click', () => triggerAiReply());
+  document.getElementById('csb-emoji').addEventListener('click', () => toggleEmojiPanel());
   document.getElementById('csb-voice').addEventListener('click', () => {
     document.getElementById('liao-voice-input').value = '';
     document.getElementById('liao-voice-modal').style.display = 'flex';
   });
-
   document.getElementById('csb-transfer').addEventListener('click', () => {
     document.getElementById('liao-transfer-amount').value = '';
     document.getElementById('liao-transfer-note').value   = '';
     document.getElementById('liao-transfer-modal').style.display = 'flex';
   });
-
   document.getElementById('csb-camera').addEventListener('click', () => {
     document.getElementById('liao-camera-desc').value = '';
     document.getElementById('liao-camera-modal').style.display = 'flex';
   });
-
   document.getElementById('csb-image').addEventListener('click', () => {
     document.getElementById('liao-image-url').value = '';
     pendingImageSrc = '';
@@ -402,339 +490,236 @@ function initSpecialBar() {
     document.getElementById('liao-image-preview').src = '';
     document.getElementById('liao-image-modal').style.display = 'flex';
   });
-
   document.getElementById('csb-rolephone').addEventListener('click', () => {
     alert('角色手机功能建设中，敬请期待');
   });
-
+  /* 编辑键：进入/退出消息编辑模式 */
   document.getElementById('csb-edit').addEventListener('click', () => {
-    alert('编辑功能建设中，敬请期待');
+    toggleEditMode();
   });
 }
 
 /* ============================================================
-   AI 回复
+   消息编辑模式（特殊功能栏编辑键触发，与时间戳菜单完全分开）
    ============================================================ */
-async function triggerAiReply() {
-  if (currentChatIdx < 0) return;
 
-  const chat = liaoChats[currentChatIdx];
-  const role = liaoRoles.find(r => r.id === chat.roleId);
-  if (!role) return;
+/* ---------- 进入/退出编辑模式 ---------- */
+function toggleEditMode() {
+  editModeActive = !editModeActive;
+  editModeSelectedIds = [];
 
-  const activeConfig = loadApiConfig();
-  if (!activeConfig || !activeConfig.url) { alert('请先在设置中配置 API 地址'); return; }
-  const model = loadApiModel();
-  if (!model) { alert('请先在设置中选择模型'); return; }
+  const btn = document.getElementById('csb-edit');
+  btn.classList.toggle('active', editModeActive);
 
-  const csbAiBtn = document.getElementById('csb-ai');
-  csbAiBtn.classList.add('active');
-  showTypingIndicator(true);
+  /* 显示/隐藏编辑模式工具栏 */
+  const toolbar = document.getElementById('edit-mode-toolbar');
+  if (toolbar) toolbar.style.display = editModeActive ? 'flex' : 'none';
 
-  const chatSettings    = chat.chatSettings || {};
-  const maxApiMsgs      = chatSettings.maxApiMsgs !== undefined ? chatSettings.maxApiMsgs : 0;
-  const chatUserSetting = chat.chatUserSetting || '';
-  const chatUserName2   = chat.chatUserName   || liaoUserName;
-  const roleSetting     = role.setting || '';
-  const roleName2       = role.nickname || role.realname;
+  /* 重新渲染消息列表以应用/移除编辑模式覆盖层 */
+  renderChatMessages();
+}
 
-  /* 构建当前可用表情包名称列表 */
-  const emojiNameList = liaoEmojis.length
-    ? liaoEmojis.map(e => e.name).join('、')
-    : '（暂无，不可发送表情包）';
+/* ---------- 给消息行添加编辑模式点击覆盖层 ---------- */
+function applyEditModeToRow(row, msgId) {
+  /* 整行点击：进入单条消息编辑面板 */
+  row.style.cursor = 'pointer';
+  row.addEventListener('click', function onEditClick(e) {
+    if (!editModeActive) return;
+    /* 阻止冒泡避免触发气泡内部按钮 */
+    e.stopPropagation();
+    openEditModePanel(msgId);
+  });
 
-  const systemPrompt =
-    `你扮演角色：${roleName2}。\n` +
-    (roleSetting ? `【角色设定】\n${roleSetting}\n` : '') +
-    (chatUserSetting
-      ? `【用户设定】\n对方是${chatUserName2}，${chatUserSetting}\n`
-      : `【用户设定】\n对方叫${chatUserName2}。\n`) +
-    `【收到的特殊消息说明】
-当你看到以下格式的消息时，说明对方发送了特殊内容：
-· "${chatUserName2}发送了一条语音：(内容)" — 对方发来语音，内容已转为文字。
-· "${chatUserName2}发送了一个表情包：(名称)" — 对方发来表情包，名称即代表该表情包的情绪含义，你看不到图片，直接根据名称理解并回应即可。
-· "${chatUserName2}发送了一张照片：(描述)" — 对方发来照片，括号内是照片描述。
-· "${chatUserName2}给你转账(金额)元，备注：(备注)" — 对方给你转账，请第一时间回应。
-· "${chatUserName2}发来了一张图片" — 对方发来了一张真实图片。
-【你可以主动发送的特殊消息指令】
-以下每种指令必须单独占一行，不可与普通文字混写在同一行：
-[SEND_VOICE:语音内容] — 发一条语音，内容必须是自然口语，有语气词，不超过20字。
-[SEND_EMOJI:表情包名称] — 发一个表情包。你只能从以下已有表情包名称中选择，不得使用列表以外的名称，列表为空则不可发：${emojiNameList}
-[SEND_TRANSFER:金额:备注] — 给对方转账，金额为数字，备注可为空。
-[SEND_PHOTO:照片描述] — 发一张假照片，括号内写照片描述。
-[RECALL] — 撤回你自己刚才发的上一条消息。
-[QUOTE:引用内容] — 引用对方的某句话。此指令必须单独一行，紧接着下一行写你的回复正文。例如：
-[QUOTE:你说的那件事]
-我记得，你是指那个吧
-注意：[QUOTE:] 后面必须紧跟一行回复正文，不能只有引用没有正文。
-【回复规则】
-1. 用口语短句，像发微信一样聊天，有情绪有立场。
-2. 每句话单独一行，换行分隔，绝不写成一段。
-3. 允许语气词、不完美表达。
-4. 不使用任何 emoji 或颜文字，纯文字（特殊指令除外）。
-5. 角色设定优先级最高。
-6. 收到转账必须第一条就回应。
-7. 发语音内容必须自然口语，有语气词。
-8. 发表情包只能用上方列出的名称，不得自造名称。
-9. 引用时 [QUOTE:内容] 单独一行，下一行必须是回复正文。`;
-  /* 世界书注入 */
-  let worldBookSection = '';
-  if (typeof getWorldBookInjection === 'function') {
-    const wbText = getWorldBookInjection(chat.messages, role.id);
-    if (wbText) {
-      worldBookSection = '\n\n【世界背景设定】\n以下是本次对话适用的世界书背景设定，请将其作为背景知识融入角色扮演，不要直接引用或朗读这些设定：\n' + wbText;
-    }
-  }
+  /* 长按/双击：多选切换 */
+  row.addEventListener('dblclick', (e) => {
+    if (!editModeActive) return;
+    e.stopPropagation();
+    toggleEditModeSelect(msgId, row);
+  });
 
-  const finalSystemPrompt = systemPrompt + worldBookSection;
-
-  let historyMsgs = chat.messages
-    .filter(m => !m.hidden)
-    .map(m => ({
-      role:    m.role === 'assistant' ? 'assistant' : 'user',
-      content: m.content || ''
-    }));
-  if (maxApiMsgs > 0 && historyMsgs.length > maxApiMsgs) {
-    historyMsgs = historyMsgs.slice(-maxApiMsgs);
-  }
-
-  const messages = [{ role: 'system', content: finalSystemPrompt }, ...historyMsgs];
-
-  try {
-    const endpoint = activeConfig.url.replace(/\/$/, '') + '/chat/completions';
-    const headers  = { 'Content-Type': 'application/json' };
-    if (activeConfig.key) headers['Authorization'] = 'Bearer ' + activeConfig.key;
-
-    const res = await fetch(endpoint, {
-      method:  'POST',
-      headers,
-      body:    JSON.stringify({ model, messages, stream: false })
-    });
-
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-
-    const json     = await res.json();
-    let rawContent = json.choices?.[0]?.message?.content || '';
-    rawContent     = removeEmoji(rawContent);
-
-    showTypingIndicator(false);
-    processAiResponse(rawContent, role, chat);
-
-  } catch (err) {
-    showTypingIndicator(false);
-    alert('API 请求失败：' + err.message);
-  } finally {
-    csbAiBtn.classList.remove('active');
+  /* 若已在选中列表里，标记选中样式 */
+  if (editModeSelectedIds.includes(msgId)) {
+    row.classList.add('edit-mode-selected');
   }
 }
 
-/* ---------- 解析并渲染 AI 回复 ---------- */
-function processAiResponse(rawContent, role, chat) {
-  const lines           = rawContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  const chatUserAvatar2 = chat.chatUserAvatar || liaoUserAvatar;
-  let cumulativeDelay   = 0;
+/* ---------- 多选切换 ---------- */
+function toggleEditModeSelect(msgId, row) {
+  const idx = editModeSelectedIds.indexOf(msgId);
+  if (idx >= 0) {
+    editModeSelectedIds.splice(idx, 1);
+    row.classList.remove('edit-mode-selected');
+  } else {
+    editModeSelectedIds.push(msgId);
+    row.classList.add('edit-mode-selected');
+  }
+  updateEditModeToolbar();
+}
+
+/* ---------- 更新工具栏状态 ---------- */
+function updateEditModeToolbar() {
+  const countEl = document.getElementById('edit-mode-select-count');
+  if (countEl) {
+    countEl.textContent = editModeSelectedIds.length > 0
+      ? '已选 ' + editModeSelectedIds.length + ' 条'
+      : '双击消息可多选';
+  }
+}
+
+/* ---------- 打开单条消息编辑面板 ---------- */
+function openEditModePanel(msgId) {
+  if (currentChatIdx < 0) return;
+  const chat   = liaoChats[currentChatIdx];
+  const msgIdx = chat.messages.findIndex(m => m.id === msgId);
+  if (msgIdx < 0) return;
+  const msg = chat.messages[msgIdx];
+
+  /* 填充编辑面板内容 */
+  const panel = document.getElementById('edit-mode-panel');
+  const textarea = document.getElementById('edit-mode-content');
+  const timeInput = document.getElementById('edit-mode-time');
+  if (!panel || !textarea || !timeInput) return;
+
+  textarea.value  = msg.content || '';
+  timeInput.value = formatFullTime(msg.ts);
+
+  /* 存储当前编辑的 msgId */
+  panel.dataset.editMsgId = msgId;
+
+  panel.style.display = 'flex';
+}
+
+/* ---------- 编辑面板：保存 ---------- */
+document.getElementById('edit-mode-save').addEventListener('click', () => {
+  const panel   = document.getElementById('edit-mode-panel');
+  const msgId   = panel.dataset.editMsgId;
+  if (!msgId || currentChatIdx < 0) return;
+
+  const chat   = liaoChats[currentChatIdx];
+  const msgIdx = chat.messages.findIndex(m => m.id === msgId);
+  if (msgIdx < 0) return;
+  const msg = chat.messages[msgIdx];
+
+  const newContent = document.getElementById('edit-mode-content').value;
+  const newTimeStr = document.getElementById('edit-mode-time').value.trim();
+
+  if (newContent.trim()) msg.content = newContent.trim();
+  if (newTimeStr) {
+    const parsed = Date.parse(newTimeStr.replace(/-/g, '/'));
+    if (!isNaN(parsed)) msg.ts = parsed;
+  }
+
+  lSave('chats', liaoChats);
+  panel.style.display = 'none';
+  renderChatMessages();
+});
+
+/* ---------- 编辑面板：取消 ---------- */
+document.getElementById('edit-mode-cancel').addEventListener('click', () => {
+  document.getElementById('edit-mode-panel').style.display = 'none';
+});
+
+/* ---------- 编辑面板：一键修复 [ts:] 并拆分为多条消息 ---------- */
+document.getElementById('edit-mode-fix-ts').addEventListener('click', () => {
+  const panel   = document.getElementById('edit-mode-panel');
+  const msgId   = panel.dataset.editMsgId;
+  if (!msgId || currentChatIdx < 0) return;
+
+  const chat   = liaoChats[currentChatIdx];
+  const msgIdx = chat.messages.findIndex(m => m.id === msgId);
+  if (msgIdx < 0) return;
+  const msg = chat.messages[msgIdx];
+
+  const raw = msg.content || '';
 
   /*
-   * 预处理：将 [QUOTE:内容] 行与紧随的正文行合并为带 quoteContent 的条目。
-   * [QUOTE:] 行本身不产生气泡，只为下一行提供 quoteContent。
+   * 拆分逻辑：
+   * 匹配 [ts:数字] 开头的片段，每个片段成为独立消息。
+   * 格式：[ts:数字] 消息内容 [ts:数字] 消息内容 ...
+   * 也处理换行分隔的情况。
    */
-  const processedLines = [];
-  for (let i = 0; i < lines.length; i++) {
-    const quoteMatch = lines[i].match(/^\[QUOTE:(.+)\]$/);
-    if (quoteMatch) {
-      const quoteContent = quoteMatch[1].trim();
-      /* 下一行是正文（非空且不是另一个 [QUOTE:]） */
-      if (i + 1 < lines.length && !/^\[QUOTE:/.test(lines[i + 1])) {
-        processedLines.push({ text: lines[i + 1].trim(), quoteContent });
-        i++; /* 跳过已消费的正文行 */
-      }
-      /* 孤立的 [QUOTE:] 没有正文则丢弃 */
-    } else {
-      processedLines.push({ text: lines[i], quoteContent: '' });
-    }
+  const tsPattern = /\[ts:\d+\]\s*/g;
+
+  /* 先把所有 [ts:数字] 前缀剥离，得到纯文本 */
+  const cleaned = raw.replace(tsPattern, '\n').trim();
+
+  /* 按换行拆分成多行，过滤空行 */
+  const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+  if (lines.length <= 1) {
+    /* 只有一行或无需拆分，直接更新内容 */
+    msg.content = lines[0] || raw.replace(tsPattern, '').trim();
+    lSave('chats', liaoChats);
+    document.getElementById('edit-mode-content').value = msg.content;
+    alert('已清除 [ts:] 格式，无需拆分。');
+    return;
   }
 
-  processedLines.forEach((item, i) => {
-    const line         = item.text;
-    const quoteContent = item.quoteContent;
-    const delay        = calcBubbleDelay(line);
-    cumulativeDelay   += (i === 0 ? 200 : delay);
+  /* 多行：将原消息替换为第一行，其余行在其后插入为新消息 */
+  const baseTs   = msg.ts || Date.now();
+  const baseRole = msg.role || 'assistant';
 
-    setTimeout(() => {
-      if (currentChatIdx < 0) return;
+  /* 更新原消息内容为第一行 */
+  msg.content = lines[0];
 
-      let msgObj = null;
+  /* 构建后续新消息并插入到原消息之后 */
+  const newMsgs = lines.slice(1).map((line, i) => ({
+    role:    baseRole,
+    type:    'text',
+    content: line,
+    ts:      baseTs + i + 1,
+    id:      'msg_' + (baseTs + i + 1) + '_' + Math.random().toString(36).slice(2)
+  }));
 
-      if (/^\[SEND_VOICE:(.+)\]$/.test(line)) {
-        const voiceText = line.match(/^\[SEND_VOICE:(.+)\]$/)[1];
-        msgObj = {
-          role: 'assistant', type: 'voice', content: voiceText,
-          quoteContent: quoteContent || undefined,
-          ts: Date.now(),
-          id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2)
-        };
+  /* 插入到 msgIdx + 1 位置 */
+  chat.messages.splice(msgIdx + 1, 0, ...newMsgs);
 
-      } else if (/^\[SEND_EMOJI:(.+)\]$/.test(line)) {
-        const emojiName = line.match(/^\[SEND_EMOJI:(.+)\]$/)[1].trim();
-        const found     = liaoEmojis.find(e => e.name === emojiName);
-        if (found) {
-          msgObj = {
-            role: 'assistant', type: 'emoji', content: found.url, emojiName: found.name,
-            quoteContent: quoteContent || undefined,
-            ts: Date.now(),
-            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2)
-          };
-        } else {
-          /* 找不到对应表情包，降级为文字 */
-          msgObj = {
-            role: 'assistant', type: 'text', content: emojiName,
-            quoteContent: quoteContent || undefined,
-            ts: Date.now(),
-            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2)
-          };
-        }
+  lSave('chats', liaoChats);
+  panel.style.display = 'none';
+  renderChatMessages();
+  alert('已修复并拆分为 ' + lines.length + ' 条消息。');
+});
 
-      } else if (/^\[SEND_TRANSFER:([^:]+):?(.*)\]$/.test(line)) {
-        const m      = line.match(/^\[SEND_TRANSFER:([^:]+):?(.*)\]$/);
-        const amount = parseFloat(m[1]) || 0;
-        const note   = m[2] || '';
-        msgObj = {
-          role: 'assistant', type: 'transfer', amount, note,
-          quoteContent: quoteContent || undefined,
-          ts: Date.now(),
-          id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-          transferStatus: 'pending', fromRole: true
-        };
+/* ---------- 编辑面板：删除本条消息 ---------- */
+document.getElementById('edit-mode-delete').addEventListener('click', () => {
+  const panel   = document.getElementById('edit-mode-panel');
+  const msgId   = panel.dataset.editMsgId;
+  if (!msgId || currentChatIdx < 0) return;
+  if (!confirm('确定删除这条消息？')) return;
 
-      } else if (/^\[SEND_PHOTO:(.+)\]$/.test(line)) {
-        const desc = line.match(/^\[SEND_PHOTO:(.+)\]$/)[1];
-        msgObj = {
-          role: 'assistant', type: 'fake_photo', content: desc,
-          quoteContent: quoteContent || undefined,
-          ts: Date.now(),
-          id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2)
-        };
+  const chat   = liaoChats[currentChatIdx];
+  const msgIdx = chat.messages.findIndex(m => m.id === msgId);
+  if (msgIdx >= 0) {
+    chat.messages.splice(msgIdx, 1);
+    lSave('chats', liaoChats);
+  }
+  panel.style.display = 'none';
+  renderChatMessages();
+});
 
-      } else if (/^\[RECALL\]$/.test(line)) {
-        const msgs = liaoChats[currentChatIdx].messages;
-        for (let k = msgs.length - 1; k >= 0; k--) {
-          if (msgs[k].role === 'assistant' && !msgs[k].recalled) {
-            msgs[k].recalled        = true;
-            msgs[k].recalledContent = msgs[k].content;
-            lSave('chats', liaoChats);
-            renderChatMessages();
-            break;
-          }
-        }
+/* ---------- 工具栏：批量删除选中消息 ---------- */
+document.getElementById('edit-mode-delete-selected').addEventListener('click', () => {
+  if (!editModeSelectedIds.length) { alert('请先双击消息进行多选'); return; }
+  if (!confirm('确定删除选中的 ' + editModeSelectedIds.length + ' 条消息？')) return;
 
-      } else {
-        const cleanLine = removeEmoji(line);
-        if (!cleanLine) return;
-        msgObj = {
-          role: 'assistant', type: 'text', content: cleanLine,
-          quoteContent: quoteContent || undefined,
-          ts: Date.now(),
-          id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2)
-        };
-      }
+  if (currentChatIdx < 0) return;
+  const chat = liaoChats[currentChatIdx];
+  chat.messages = chat.messages.filter(m => !editModeSelectedIds.includes(m.id));
+  editModeSelectedIds = [];
+  lSave('chats', liaoChats);
+  renderChatMessages();
+  updateEditModeToolbar();
+});
 
-      if (msgObj) {
-        liaoChats[currentChatIdx].messages.push(msgObj);
-        lSave('chats', liaoChats);
-        appendMessageBubble(msgObj, role, chatUserAvatar2, true);
-      }
-
-      if (i === processedLines.length - 1) {
-        renderChatList();
-        if (Math.random() < 0.10) scheduleRoleSuiyanNew(role);
-      }
-    }, cumulativeDelay);
-  });
-}
-
-/* ============================================================
-   随言 — 角色自主发布新随言
-   ============================================================ */
-function scheduleRoleSuiyanNew(role) {
-  setTimeout(async () => {
-    if (!role) return;
-    const activeConfig = loadApiConfig();
-    if (!activeConfig || !activeConfig.url) return;
-    const model = loadApiModel();
-    if (!model) return;
-
-    const systemPrompt =
-      `你是角色 ${role.realname}，${role.setting || ''}。
-现在请你发一条随言（类似朋友圈的短动态），内容随意，可以和你最近的聊天内容有关，也可以是你此刻的感受、所见所闻、心情或想法。
-要求：
-1. 不超过80个字。
-2. 纯文字，不使用任何特殊格式。
-3. 口语化，自然真实，像随手发的朋友圈。
-4. 只输出动态内容本身，不要加任何前缀或说明。`;
-
-    try {
-      const endpoint = activeConfig.url.replace(/\/$/, '') + '/chat/completions';
-      const headers  = { 'Content-Type': 'application/json' };
-      if (activeConfig.key) headers['Authorization'] = 'Bearer ' + activeConfig.key;
-      const res = await fetch(endpoint, {
-        method: 'POST', headers,
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'system', content: systemPrompt }],
-          stream: false
-        })
-      });
-      if (!res.ok) return;
-      const json    = await res.json();
-      const content = removeEmoji((json.choices?.[0]?.message?.content || '').trim());
-      if (!content) return;
-
-      liaoSuiyan.push({
-        author:   role.nickname || role.realname,
-        avatar:   role.avatar   || defaultAvatar(),
-        content,
-        ts:       Date.now(),
-        likes:    0,
-        likedBy:  [],
-        comments: [],
-        isUser:   false,
-        roleId:   role.id
-      });
-      lSave('suiyan', liaoSuiyan);
-    } catch (e) { /* 静默失败 */ }
-  }, 1200);
-}
-
-/* ============================================================
-   随言 — 角色互动（点赞/评论用户随言）
-   ============================================================ */
-function scheduleRoleInteractSuiyan() {
-  if (Math.random() > 0.10) return;
-  const userPosts = liaoSuiyan.filter(p => p.isUser);
-  if (!userPosts.length || !liaoRoles.length) return;
-  const post    = userPosts[userPosts.length - 1];
-  const postIdx = liaoSuiyan.lastIndexOf(post);
-  const role    = liaoRoles[Math.floor(Math.random() * liaoRoles.length)];
-
-  setTimeout(() => {
-    if (!liaoSuiyan[postIdx]) return;
-    if (!liaoSuiyan[postIdx].likedBy) liaoSuiyan[postIdx].likedBy = [];
-    if (!liaoSuiyan[postIdx].likedBy.includes(role.id)) {
-      liaoSuiyan[postIdx].likedBy.push(role.id);
-      liaoSuiyan[postIdx].likes = (liaoSuiyan[postIdx].likes || 0) + 1;
-    }
-    if (Math.random() < 0.5) {
-      const comments = ['哈哈', '好的', '嗯嗯', '真的吗', '厉害啊', '是这样啊', '我也是'];
-      const c        = comments[Math.floor(Math.random() * comments.length)];
-      if (!liaoSuiyan[postIdx].comments) liaoSuiyan[postIdx].comments = [];
-      liaoSuiyan[postIdx].comments.push({
-        author: role.nickname || role.realname,
-        text:   c
-      });
-    }
-    lSave('suiyan', liaoSuiyan);
-  }, 2000 + Math.random() * 4000);
-}
+/* ---------- 工具栏：退出编辑模式 ---------- */
+document.getElementById('edit-mode-exit').addEventListener('click', () => {
+  editModeActive      = false;
+  editModeSelectedIds = [];
+  document.getElementById('csb-edit').classList.remove('active');
+  const toolbar = document.getElementById('edit-mode-toolbar');
+  if (toolbar) toolbar.style.display = 'none';
+  renderChatMessages();
+});
 
 /* ============================================================
    语音发送
@@ -744,16 +729,17 @@ document.getElementById('liao-voice-confirm').addEventListener('click', () => {
   if (!text || currentChatIdx < 0) return;
   document.getElementById('liao-voice-modal').style.display = 'none';
 
-  const chat = liaoChats[currentChatIdx];
-  const role = liaoRoles.find(r => r.id === chat.roleId);
-  const uAvt = chat.chatUserAvatar || liaoUserAvatar;
+  const chat     = liaoChats[currentChatIdx];
+  const role     = liaoRoles.find(r => r.id === chat.roleId);
+  const uAvt     = chat.chatUserAvatar || liaoUserAvatar;
   const userName = chat.chatUserName || liaoUserName;
 
   const quoteContent = (currentQuoteMsgIdx >= 0 && chat.messages[currentQuoteMsgIdx])
     ? (chat.messages[currentQuoteMsgIdx].content || '') : '';
 
-  const msgObj = {
-    role: 'user', type: 'voice', content: text,
+  const content = '[(' + userName + ')发送了一条语音：' + text + ']';
+  const msgObj  = {
+    role: 'user', type: 'text', content,
     quoteContent: quoteContent || undefined,
     ts: Date.now(),
     id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2)
@@ -766,18 +752,6 @@ document.getElementById('liao-voice-confirm').addEventListener('click', () => {
   if (qb) qb.style.display = 'none';
 
   appendMessageBubble(msgObj, role, uAvt, true);
-
-  /* 仅注入 system_hint，不调用 API */
-  setTimeout(() => {
-    if (currentChatIdx < 0) return;
-    liaoChats[currentChatIdx].messages.push({
-      role: 'user',
-      content: `${userName}发送了一条语音：${text}`,
-      type: 'system_hint', hidden: true,
-      ts: Date.now(), id: 'sys_' + Date.now()
-    });
-    lSave('chats', liaoChats);
-  }, 100);
 });
 
 document.getElementById('liao-voice-cancel').addEventListener('click', () => {
@@ -793,16 +767,19 @@ document.getElementById('liao-transfer-confirm').addEventListener('click', () =>
   if (!amount || amount <= 0 || currentChatIdx < 0) { alert('请输入正确的金额'); return; }
   document.getElementById('liao-transfer-modal').style.display = 'none';
 
-  const chat    = liaoChats[currentChatIdx];
-  const role    = liaoRoles.find(r => r.id === chat.roleId);
-  const uAvt    = chat.chatUserAvatar || liaoUserAvatar;
+  const chat     = liaoChats[currentChatIdx];
+  const role     = liaoRoles.find(r => r.id === chat.roleId);
+  const uAvt     = chat.chatUserAvatar || liaoUserAvatar;
   const userName = chat.chatUserName || liaoUserName;
-  const msgId   = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
+  const content = note
+    ? '[(' + userName + ')发起了一笔转账：' + amount.toFixed(2) + '元，备注：' + note + ']'
+    : '[(' + userName + ')发起了一笔转账：' + amount.toFixed(2) + '元]';
   const msgObj = {
-    role: 'user', type: 'transfer', amount, note,
-    ts: Date.now(), id: msgId,
-    transferStatus: 'pending', fromRole: false
+    role: 'user', type: 'text', content,
+    ts: Date.now(),
+    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+    transferStatus: 'pending'
   };
   chat.messages.push(msgObj);
   lSave('chats', liaoChats);
@@ -812,44 +789,10 @@ document.getElementById('liao-transfer-confirm').addEventListener('click', () =>
   if (qb) qb.style.display = 'none';
 
   appendMessageBubble(msgObj, role, uAvt, true);
-
-  /* 仅注入 system_hint，不调用 API */
-  setTimeout(() => {
-    if (currentChatIdx < 0) return;
-    const hintText = note
-      ? `${userName}给你转账${amount.toFixed(2)}元，备注：${note}`
-      : `${userName}给你转账${amount.toFixed(2)}元`;
-    liaoChats[currentChatIdx].messages.push({
-      role: 'user',
-      content: hintText,
-      type: 'system_hint', hidden: true,
-      ts: Date.now(), id: 'sys_' + Date.now()
-    });
-    lSave('chats', liaoChats);
-  }, 600);
 });
 
 document.getElementById('liao-transfer-cancel').addEventListener('click', () => {
   document.getElementById('liao-transfer-modal').style.display = 'none';
-});
-
-/* ---------- 转账接受/拒绝 ---------- */
-document.getElementById('liao-transfer-accept-btn').addEventListener('click', () => {
-  if (!currentTransferMsgId || currentChatIdx < 0) return;
-  const chat = liaoChats[currentChatIdx];
-  const msg  = chat.messages.find(m => m.id === currentTransferMsgId);
-  if (msg) { msg.transferStatus = 'accepted'; lSave('chats', liaoChats); renderChatMessages(); }
-  document.getElementById('liao-transfer-accept-modal').style.display = 'none';
-  currentTransferMsgId = null;
-});
-
-document.getElementById('liao-transfer-decline-btn').addEventListener('click', () => {
-  if (!currentTransferMsgId || currentChatIdx < 0) return;
-  const chat = liaoChats[currentChatIdx];
-  const msg  = chat.messages.find(m => m.id === currentTransferMsgId);
-  if (msg) { msg.transferStatus = 'declined'; lSave('chats', liaoChats); renderChatMessages(); }
-  document.getElementById('liao-transfer-accept-modal').style.display = 'none';
-  currentTransferMsgId = null;
 });
 
 /* ============================================================
@@ -865,8 +808,9 @@ document.getElementById('liao-camera-confirm').addEventListener('click', () => {
   const uAvt     = chat.chatUserAvatar || liaoUserAvatar;
   const userName = chat.chatUserName || liaoUserName;
 
-  const msgObj = {
-    role: 'user', type: 'fake_photo', content: desc,
+  const content = '[(' + userName + ')发送了一张照片：' + desc + ']';
+  const msgObj  = {
+    role: 'user', type: 'text', content,
     ts: Date.now(),
     id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2)
   };
@@ -878,18 +822,6 @@ document.getElementById('liao-camera-confirm').addEventListener('click', () => {
   if (qb) qb.style.display = 'none';
 
   appendMessageBubble(msgObj, role, uAvt, true);
-
-  /* 仅注入 system_hint，不调用 API */
-  setTimeout(() => {
-    if (currentChatIdx < 0) return;
-    liaoChats[currentChatIdx].messages.push({
-      role: 'user',
-      content: `${userName}发送了一张照片：${desc}`,
-      type: 'system_hint', hidden: true,
-      ts: Date.now(), id: 'sys_' + Date.now()
-    });
-    lSave('chats', liaoChats);
-  }, 500);
 });
 
 document.getElementById('liao-camera-cancel').addEventListener('click', () => {
@@ -931,10 +863,9 @@ document.getElementById('liao-image-confirm').addEventListener('click', () => {
   if (!pendingImageSrc || currentChatIdx < 0) { alert('请先选择图片'); return; }
   document.getElementById('liao-image-modal').style.display = 'none';
 
-  const chat     = liaoChats[currentChatIdx];
-  const role     = liaoRoles.find(r => r.id === chat.roleId);
-  const uAvt     = chat.chatUserAvatar || liaoUserAvatar;
-  const userName = chat.chatUserName || liaoUserName;
+  const chat = liaoChats[currentChatIdx];
+  const role = liaoRoles.find(r => r.id === chat.roleId);
+  const uAvt = chat.chatUserAvatar || liaoUserAvatar;
 
   const msgObj = {
     role: 'user', type: 'image', content: pendingImageSrc,
@@ -950,338 +881,11 @@ document.getElementById('liao-image-confirm').addEventListener('click', () => {
 
   appendMessageBubble(msgObj, role, uAvt, true);
   pendingImageSrc = '';
-
-  /* 仅注入 system_hint，不调用 API */
-  setTimeout(() => {
-    if (currentChatIdx < 0) return;
-    liaoChats[currentChatIdx].messages.push({
-      role: 'user',
-      content: `${userName}发来了一张图片`,
-      type: 'system_hint', hidden: true,
-      ts: Date.now(), id: 'sys_' + Date.now()
-    });
-    lSave('chats', liaoChats);
-  }, 500);
 });
 
 document.getElementById('liao-image-cancel').addEventListener('click', () => {
   document.getElementById('liao-image-modal').style.display = 'none';
   pendingImageSrc = '';
-});
-
-/* ============================================================
-   表情包面板
-   ============================================================ */
-function toggleEmojiPanel() {
-  emojiPanelOpen = !emojiPanelOpen;
-  const panel = document.getElementById('emoji-panel');
-  panel.style.display = emojiPanelOpen ? 'flex' : 'none';
-  document.getElementById('csb-emoji').classList.toggle('active', emojiPanelOpen);
-  if (emojiPanelOpen) renderEmojiPanel();
-}
-
-function renderEmojiPanel() {
-  const catList = document.getElementById('emoji-cat-list');
-  catList.innerHTML = '';
-
-  liaoEmojiCats.forEach(cat => {
-    const btn = document.createElement('button');
-    btn.className   = 'emoji-sidebar-btn' + (emojiCurrentCat === cat ? ' active' : '');
-    btn.textContent = cat;
-    btn.addEventListener('click', () => {
-      emojiCurrentCat = cat;
-      document.querySelectorAll('#emoji-cat-list .emoji-sidebar-btn, .emoji-sidebar-btn[data-cat="all"]')
-        .forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderEmojiGrid();
-    });
-    catList.appendChild(btn);
-  });
-
-  const allBtn = document.querySelector('.emoji-sidebar-btn[data-cat="all"]');
-  if (allBtn) {
-    allBtn.className = 'emoji-sidebar-btn' + (emojiCurrentCat === 'all' ? ' active' : '');
-    const newAllBtn = allBtn.cloneNode(true);
-    allBtn.parentNode.replaceChild(newAllBtn, allBtn);
-    newAllBtn.addEventListener('click', () => {
-      emojiCurrentCat = 'all';
-      document.querySelectorAll('#emoji-cat-list .emoji-sidebar-btn')
-        .forEach(b => b.classList.remove('active'));
-      newAllBtn.classList.add('active');
-      renderEmojiGrid();
-    });
-  }
-
-  renderEmojiGrid();
-}
-
-function renderEmojiGrid() {
-  const grid     = document.getElementById('emoji-panel-grid');
-  grid.innerHTML = '';
-  const filtered = emojiCurrentCat === 'all'
-    ? liaoEmojis
-    : liaoEmojis.filter(e => e.cat === emojiCurrentCat);
-
-  if (!filtered.length) {
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;font-size:12px;color:var(--text-light);">还没有表情包，点击导入吧</div>';
-    return;
-  }
-
-  filtered.forEach(emoji => {
-    const img     = document.createElement('img');
-    img.className = 'emoji-grid-item';
-    img.src       = emoji.url;
-    img.alt       = emoji.name || '';
-    img.title     = emoji.name || '';
-    img.loading   = 'lazy';
-    img.addEventListener('click', () => sendEmojiMsg(emoji));
-    grid.appendChild(img);
-  });
-}
-
-function sendEmojiMsg(emoji) {
-  if (currentChatIdx < 0) return;
-  const chat     = liaoChats[currentChatIdx];
-  const role     = liaoRoles.find(r => r.id === chat.roleId);
-  const uAvt     = chat.chatUserAvatar || liaoUserAvatar;
-  const userName = chat.chatUserName || liaoUserName;
-
-  const msgObj = {
-    role: 'user', type: 'emoji',
-    content: emoji.url, emojiName: emoji.name || '',
-    ts: Date.now(),
-    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2)
-  };
-  chat.messages.push(msgObj);
-  lSave('chats', liaoChats);
-
-  currentQuoteMsgIdx = -1;
-  const qb = document.getElementById('chat-quote-bar');
-  if (qb) qb.style.display = 'none';
-
-  appendMessageBubble(msgObj, role, uAvt, true);
-
-  /* 关闭面板 */
-  emojiPanelOpen = false;
-  document.getElementById('emoji-panel').style.display = 'none';
-  document.getElementById('csb-emoji').classList.remove('active');
-
-  /* 仅注入 system_hint，不调用 API */
-  setTimeout(() => {
-    if (currentChatIdx < 0) return;
-    liaoChats[currentChatIdx].messages.push({
-      role: 'user',
-      content: `${userName}发送了一个表情包：${emoji.name || '表情包'}`,
-      type: 'system_hint', hidden: true,
-      ts: Date.now(), id: 'sys_' + Date.now()
-    });
-    lSave('chats', liaoChats);
-  }, 400);
-}
-
-/* ---------- 表情包导入按钮 ---------- */
-document.getElementById('emoji-import-btn').addEventListener('click', () => {
-  emojiPanelOpen = false;
-  document.getElementById('emoji-panel').style.display = 'none';
-  document.getElementById('csb-emoji').classList.remove('active');
-  openEmojiImportModal();
-});
-
-document.getElementById('emoji-manage-btn').addEventListener('click', () => {
-  emojiPanelOpen = false;
-  document.getElementById('emoji-panel').style.display = 'none';
-  document.getElementById('csb-emoji').classList.remove('active');
-  openEmojiManageModal();
-});
-
-/* ============================================================
-   表情包导入弹窗
-   ============================================================ */
-function openEmojiImportModal() {
-  const wrap = document.getElementById('liao-emoji-import-cat-wrap');
-  wrap.innerHTML = '';
-  liaoEmojiCats.forEach(cat => {
-    const btn = document.createElement('button');
-    btn.className   = 'emoji-cat-tag';
-    btn.textContent = cat;
-    btn.addEventListener('click', () => {
-      wrap.querySelectorAll('.emoji-cat-tag').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    });
-    wrap.appendChild(btn);
-  });
-  document.getElementById('liao-emoji-batch-input').value    = '';
-  document.getElementById('liao-emoji-import-new-cat').value = '';
-  document.getElementById('liao-emoji-import-modal').style.display = 'flex';
-}
-
-document.getElementById('liao-emoji-import-confirm').addEventListener('click', () => {
-  const batchText  = document.getElementById('liao-emoji-batch-input').value.trim();
-  const newCatName = document.getElementById('liao-emoji-import-new-cat').value.trim();
-  const wrap       = document.getElementById('liao-emoji-import-cat-wrap');
-  const activeTag  = wrap.querySelector('.emoji-cat-tag.active');
-  let targetCat    = activeTag ? activeTag.textContent : (newCatName || '默认');
-
-  if (newCatName && !liaoEmojiCats.includes(newCatName)) {
-    liaoEmojiCats.push(newCatName);
-    lSave('emojiCats', liaoEmojiCats);
-    targetCat = newCatName;
-  }
-
-  let imported = 0;
-  if (batchText) {
-    batchText.split('\n').map(l => l.trim()).filter(l => l).forEach(line => {
-      const match = line.match(/^(.+?)[：:](https?:\/\/.+)$/);
-      if (match) {
-        liaoEmojis.push({
-          id:   'emoji_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-          name: match[1].trim(),
-          url:  match[2].trim(),
-          cat:  targetCat
-        });
-        imported++;
-      }
-    });
-  }
-
-  lSave('emojis', liaoEmojis);
-  document.getElementById('liao-emoji-import-modal').style.display = 'none';
-  if (imported > 0) alert(`成功导入 ${imported} 个表情包`);
-});
-
-document.getElementById('liao-emoji-import-cancel').addEventListener('click', () => {
-  document.getElementById('liao-emoji-import-modal').style.display = 'none';
-});
-
-document.getElementById('liao-emoji-local-btn').addEventListener('click', () => {
-  document.getElementById('liao-emoji-local-file').click();
-});
-
-document.getElementById('liao-emoji-local-file').addEventListener('change', function () {
-  const files = Array.from(this.files);
-  if (!files.length) return;
-  const wrap       = document.getElementById('liao-emoji-import-cat-wrap');
-  const activeTag  = wrap.querySelector('.emoji-cat-tag.active');
-  const newCatName = document.getElementById('liao-emoji-import-new-cat').value.trim();
-  let targetCat    = activeTag ? activeTag.textContent : (newCatName || '默认');
-
-  if (newCatName && !liaoEmojiCats.includes(newCatName)) {
-    liaoEmojiCats.push(newCatName);
-    lSave('emojiCats', liaoEmojiCats);
-    targetCat = newCatName;
-  }
-
-  let done = 0;
-  files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      liaoEmojis.push({
-        id:   'emoji_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-        name: file.name.replace(/\.[^.]+$/, ''),
-        url:  e.target.result,
-        cat:  targetCat
-      });
-      done++;
-      if (done === files.length) {
-        lSave('emojis', liaoEmojis);
-        alert(`成功导入 ${done} 个本地表情包`);
-        document.getElementById('liao-emoji-import-modal').style.display = 'none';
-      }
-    };
-    reader.readAsDataURL(file);
-  });
-  this.value = '';
-});
-
-/* ============================================================
-   表情包管理弹窗
-   ============================================================ */
-function openEmojiManageModal() {
-  emojiManageSelectedIds = [];
-  emojiManageCurrentCat  = 'all';
-  renderEmojiManageModal();
-  document.getElementById('liao-emoji-manage-modal').style.display = 'flex';
-}
-
-function renderEmojiManageModal() {
-  const catsEl     = document.getElementById('liao-emoji-manage-cats');
-  catsEl.innerHTML = '';
-
-  const allTag = document.createElement('button');
-  allTag.className   = 'emoji-cat-tag' + (emojiManageCurrentCat === 'all' ? ' active' : '');
-  allTag.textContent = '全部';
-  allTag.addEventListener('click', () => { emojiManageCurrentCat = 'all'; renderEmojiManageModal(); });
-  catsEl.appendChild(allTag);
-
-  liaoEmojiCats.forEach(cat => {
-    const tag = document.createElement('button');
-    tag.className   = 'emoji-cat-tag' + (emojiManageCurrentCat === cat ? ' active' : '');
-    tag.textContent = cat;
-    tag.addEventListener('click', () => { emojiManageCurrentCat = cat; renderEmojiManageModal(); });
-    catsEl.appendChild(tag);
-  });
-
-  const grid     = document.getElementById('liao-emoji-manage-grid');
-  grid.innerHTML = '';
-  const filtered = emojiManageCurrentCat === 'all'
-    ? liaoEmojis
-    : liaoEmojis.filter(e => e.cat === emojiManageCurrentCat);
-
-  filtered.forEach(emoji => {
-    const item = document.createElement('div');
-    item.className = 'emoji-manage-item' + (emojiManageSelectedIds.includes(emoji.id) ? ' selected' : '');
-    item.innerHTML = `
-      <img src="${escHtml(emoji.url)}" alt="${escHtml(emoji.name || '')}" loading="lazy">
-      <span class="emoji-manage-check">√</span>`;
-    item.addEventListener('click', () => {
-      const idx = emojiManageSelectedIds.indexOf(emoji.id);
-      if (idx >= 0) emojiManageSelectedIds.splice(idx, 1);
-      else emojiManageSelectedIds.push(emoji.id);
-      item.classList.toggle('selected', emojiManageSelectedIds.includes(emoji.id));
-    });
-    grid.appendChild(item);
-  });
-}
-
-document.getElementById('liao-emoji-manage-delete').addEventListener('click', () => {
-  if (!emojiManageSelectedIds.length) { alert('请先选择要删除的表情包'); return; }
-  liaoEmojis = liaoEmojis.filter(e => !emojiManageSelectedIds.includes(e.id));
-  emojiManageSelectedIds = [];
-  lSave('emojis', liaoEmojis);
-  renderEmojiManageModal();
-});
-
-document.getElementById('liao-emoji-manage-move').addEventListener('click', () => {
-  if (!emojiManageSelectedIds.length) { alert('请先选择表情包'); return; }
-  const catName = prompt('移动到哪个分类？（输入已有分类名或新建名称）');
-  if (!catName) return;
-  if (!liaoEmojiCats.includes(catName)) {
-    liaoEmojiCats.push(catName);
-    lSave('emojiCats', liaoEmojiCats);
-  }
-  liaoEmojis.forEach(e => {
-    if (emojiManageSelectedIds.includes(e.id)) e.cat = catName;
-  });
-  emojiManageSelectedIds = [];
-  lSave('emojis', liaoEmojis);
-  renderEmojiManageModal();
-});
-
-document.getElementById('liao-emoji-manage-export').addEventListener('click', () => {
-  const toExport = emojiManageSelectedIds.length
-    ? liaoEmojis.filter(e => emojiManageSelectedIds.includes(e.id))
-    : liaoEmojis;
-  const lines = toExport.filter(e => e.url.startsWith('http')).map(e => `${e.name}:${e.url}`);
-  if (!lines.length) { alert('没有可导出的网络图片链接'); return; }
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
-  a.download = 'emoji-export.txt';
-  a.click();
-});
-
-document.getElementById('liao-emoji-manage-close').addEventListener('click', () => {
-  document.getElementById('liao-emoji-manage-modal').style.display = 'none';
 });
 
 /* ============================================================
@@ -1299,7 +903,7 @@ document.getElementById('cs-timestamp-save-btn').addEventListener('click', () =>
 });
 
 /* ============================================================
-   角色库渲染（含进入聊天设置按钮）
+   角色库渲染
    ============================================================ */
 function renderRoleLib() {
   const grid  = document.getElementById('liao-role-grid');
@@ -1310,11 +914,29 @@ function renderRoleLib() {
   liaoRoles.forEach(role => {
     const card = document.createElement('div');
     card.className = 'role-card';
-    card.innerHTML = `
-      <img class="role-card-avatar" src="${escHtml(role.avatar || defaultAvatar())}" alt="">
-      <div class="role-card-name">${escHtml(role.nickname)}</div>
-      <div class="role-card-real">${escHtml(role.realname)}</div>
-      <button class="role-card-settings-btn" data-role-id="${escHtml(role.id)}">聊天设置</button>`;
+
+    const avatarImg     = document.createElement('img');
+    avatarImg.className = 'role-card-avatar';
+    avatarImg.src       = role.avatar || defaultAvatar();
+    avatarImg.alt       = '';
+
+    const nameDiv       = document.createElement('div');
+    nameDiv.className   = 'role-card-name';
+    nameDiv.textContent = role.nickname;
+
+    const realDiv       = document.createElement('div');
+    realDiv.className   = 'role-card-real';
+    realDiv.textContent = role.realname;
+
+    const settingsBtn          = document.createElement('button');
+    settingsBtn.className      = 'role-card-settings-btn';
+    settingsBtn.dataset.roleId = role.id;
+    settingsBtn.textContent    = '聊天设置';
+
+    card.appendChild(avatarImg);
+    card.appendChild(nameDiv);
+    card.appendChild(realDiv);
+    card.appendChild(settingsBtn);
 
     card.addEventListener('click', (e) => {
       if (e.target.classList.contains('role-card-settings-btn')) return;
@@ -1325,7 +947,7 @@ function renderRoleLib() {
       }
     });
 
-    card.querySelector('.role-card-settings-btn').addEventListener('click', (e) => {
+    settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const chatIdx = liaoChats.findIndex(c => c.roleId === role.id);
       if (chatIdx >= 0) {
@@ -1339,7 +961,7 @@ function renderRoleLib() {
     grid.appendChild(card);
   });
 
-  if (count) count.textContent = `共 ${liaoRoles.length} 个角色`;
+  if (count) count.textContent = '共 ' + liaoRoles.length + ' 个角色';
 }
 
 /* ============================================================
@@ -1351,17 +973,36 @@ document.getElementById('cs-import-persona-btn').addEventListener('click', () =>
   list.innerHTML = '';
 
   if (!personas.length) {
-    list.innerHTML = '<div style="font-size:13px;color:var(--text-light);padding:8px 0;">人设库为空，请先在我的人设库中新建</div>';
+    const empty       = document.createElement('div');
+    empty.style.cssText = 'font-size:13px;color:var(--text-light);padding:8px 0;';
+    empty.textContent   = '人设库为空，请先在我的人设库中新建';
+    list.appendChild(empty);
   } else {
     personas.forEach(p => {
       const card = document.createElement('div');
       card.className = 'persona-card';
-      card.innerHTML = `
-        <img class="persona-card-avatar" src="${escHtml(p.avatar || defaultAvatar())}" alt="">
-        <div class="persona-card-info">
-          <div class="persona-card-name">${escHtml(p.name)}</div>
-          <div class="persona-card-setting">${escHtml((p.setting || '').slice(0, 40))}</div>
-        </div>`;
+
+      const avatarImg     = document.createElement('img');
+      avatarImg.className = 'persona-card-avatar';
+      avatarImg.src       = p.avatar || defaultAvatar();
+      avatarImg.alt       = '';
+
+      const infoDiv       = document.createElement('div');
+      infoDiv.className   = 'persona-card-info';
+
+      const nameDiv       = document.createElement('div');
+      nameDiv.className   = 'persona-card-name';
+      nameDiv.textContent = p.name;
+
+      const settingDiv       = document.createElement('div');
+      settingDiv.className   = 'persona-card-setting';
+      settingDiv.textContent = (p.setting || '').slice(0, 40);
+
+      infoDiv.appendChild(nameDiv);
+      infoDiv.appendChild(settingDiv);
+      card.appendChild(avatarImg);
+      card.appendChild(infoDiv);
+
       card.addEventListener('click', () => {
         document.getElementById('cs-user-name').value    = p.name    || '';
         document.getElementById('cs-user-setting').value = p.setting || '';
