@@ -4,14 +4,14 @@
    ============================================================ */
 
 /* ---------- 全局状态 ---------- */
-var currentQuoteMsgIdx    = -1;
-var pendingImageSrc        = '';
-var currentTransferMsgId   = null;
-var editingMsgIdx          = -1;
+var currentQuoteMsgIdx  = -1;
+var pendingImageSrc     = '';
+var currentTransferMsgId = null;
+var editingMsgIdx       = -1;
 
 /* ---- 消息编辑模式状态 ---- */
-var editModeActive       = false;
-var editModeSelectedIds  = [];
+var editModeActive      = false;
+var editModeSelectedIds = [];
 
 /* ============================================================
    renderSpecialContent — 统一特殊内容渲染
@@ -21,10 +21,10 @@ function renderSpecialContent(content, msg) {
 
   const raw = content;
 
-  /* 纯表情包消息判断 */
-  const emojiOnlyRe = /^\[.+?发送了一个表情包：(.+?)\]$/;
-  /* 纯转账消息判断 */
-  const transferOnlyRe = /^\[.+?发起了一笔转账：[\s\S]+?\]$/;
+  /* 纯表情包消息：整条内容只有一个表情包标记 */
+  const emojiOnlyRe    = /^$$.+?发送了一个表情包：(.+?)$$$/;
+  /* 纯转账消息：整条内容只有一个转账标记 */
+  const transferOnlyRe = /^$$.+?发起了一笔转账：[\s\S]+?$$$/;
 
   const isEmojiOnly    = emojiOnlyRe.test(raw.trim());
   const isTransferOnly = transferOnlyRe.test(raw.trim());
@@ -38,7 +38,7 @@ function renderSpecialContent(content, msg) {
       '</div>';
   }
 
-  const globalRe = /\[(.+?)(?:发送了一个表情包：(.+?)|发送了一条语音：([\s\S]+?)|发起了一笔转账：(\d+\.?\d*)元(?:，备注：([\s\S]+?))?|发送了一张照片：([\s\S]+?))\]/g;
+  const globalRe = /$$(.+?)(?:发送了一个表情包：(.+?)|发送了一条语音：([\s\S]+?)|发起了一笔转账：(\d+\.?\d*)元(?:，备注：([\s\S]+?))?|发送了一张照片：([\s\S]+?))$$/g;
 
   let result = '';
   let last   = 0;
@@ -54,7 +54,7 @@ function renderSpecialContent(content, msg) {
     if (match[2] !== undefined) {
       /* 表情包 */
       const emojiName = match[2].trim();
-      const found     = liaoEmojis.find(e => e.name === emojiName);
+      const found     = (typeof liaoEmojis !== 'undefined' ? liaoEmojis : []).find(e => e.name === emojiName);
       if (found) {
         result += '<img class="emoji-msg-bubble" src="' + escHtml(found.url) + '" alt="' + escHtml(emojiName) + '" title="' + escHtml(emojiName) + '">';
       } else {
@@ -177,15 +177,15 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
     const { html, isEmojiOnly, isTransferOnly } = renderSpecialContent(msg.content || '', msg);
     bubbleInner += html;
     bubbleEl.innerHTML = bubbleInner;
-    /* 表情包消息：无边框无背景 */
+    /* 表情包消息气泡：透明无边框 */
     if (isEmojiOnly) {
       bubbleEl.classList.add('bubble-emoji-only');
     }
-    /* 转账消息：无边框无背景 */
+    /* 转账消息气泡：透明无边框 */
     else if (isTransferOnly) {
       bubbleEl.classList.add('bubble-transfer-only');
     }
-    /* 其他（语音/假图片/照片/普通文字）：保留气泡 */
+    /* 其他所有消息（语音/照片/文字）：保留正常气泡 */
   }
 
   const avatarEl = document.createElement('img');
@@ -489,7 +489,7 @@ function initSpecialBar() {
   document.getElementById('csb-transfer').addEventListener('click', () => {
     document.getElementById('liao-transfer-amount').value = '';
     document.getElementById('liao-transfer-note').value   = '';
-    document.getElementById('liao-transfer-modal').style.display = 'flex';
+        document.getElementById('liao-transfer-modal').style.display = 'flex';
   });
   document.getElementById('csb-camera').addEventListener('click', () => {
     document.getElementById('liao-camera-desc').value = '';
@@ -511,10 +511,8 @@ function initSpecialBar() {
 }
 
 /* ============================================================
-   消息编辑模式（特殊功能栏编辑键触发，与时间戳菜单完全分开）
+   消息编辑模式
    ============================================================ */
-
-/* ---------- 进入/退出编辑模式 ---------- */
 function toggleEditMode() {
   editModeActive = !editModeActive;
   editModeSelectedIds = [];
@@ -528,7 +526,6 @@ function toggleEditMode() {
   renderChatMessages();
 }
 
-/* ---------- 给消息行添加编辑模式点击覆盖层 ---------- */
 function applyEditModeToRow(row, msgId) {
   row.style.cursor = 'pointer';
   row.addEventListener('click', function onEditClick(e) {
@@ -548,7 +545,6 @@ function applyEditModeToRow(row, msgId) {
   }
 }
 
-/* ---------- 多选切换 ---------- */
 function toggleEditModeSelect(msgId, row) {
   const idx = editModeSelectedIds.indexOf(msgId);
   if (idx >= 0) {
@@ -561,7 +557,6 @@ function toggleEditModeSelect(msgId, row) {
   updateEditModeToolbar();
 }
 
-/* ---------- 更新工具栏状态 ---------- */
 function updateEditModeToolbar() {
   const countEl = document.getElementById('edit-mode-select-count');
   if (countEl) {
@@ -571,7 +566,6 @@ function updateEditModeToolbar() {
   }
 }
 
-/* ---------- 打开单条消息编辑面板 ---------- */
 function openEditModePanel(msgId) {
   if (currentChatIdx < 0) return;
   const chat   = liaoChats[currentChatIdx];
@@ -591,10 +585,9 @@ function openEditModePanel(msgId) {
   panel.style.display = 'flex';
 }
 
-/* ---------- 编辑面板：保存 ---------- */
 document.getElementById('edit-mode-save').addEventListener('click', () => {
-  const panel   = document.getElementById('edit-mode-panel');
-  const msgId   = panel.dataset.editMsgId;
+  const panel  = document.getElementById('edit-mode-panel');
+  const msgId  = panel.dataset.editMsgId;
   if (!msgId || currentChatIdx < 0) return;
 
   const chat   = liaoChats[currentChatIdx];
@@ -616,15 +609,13 @@ document.getElementById('edit-mode-save').addEventListener('click', () => {
   renderChatMessages();
 });
 
-/* ---------- 编辑面板：取消 ---------- */
 document.getElementById('edit-mode-cancel').addEventListener('click', () => {
   document.getElementById('edit-mode-panel').style.display = 'none';
 });
 
-/* ---------- 编辑面板：一键修复 [ts:] 并拆分为多条消息 ---------- */
 document.getElementById('edit-mode-fix-ts').addEventListener('click', () => {
-  const panel   = document.getElementById('edit-mode-panel');
-  const msgId   = panel.dataset.editMsgId;
+  const panel  = document.getElementById('edit-mode-panel');
+  const msgId  = panel.dataset.editMsgId;
   if (!msgId || currentChatIdx < 0) return;
 
   const chat   = liaoChats[currentChatIdx];
@@ -632,7 +623,7 @@ document.getElementById('edit-mode-fix-ts').addEventListener('click', () => {
   if (msgIdx < 0) return;
   const msg = chat.messages[msgIdx];
 
-  const raw = msg.content || '';
+  const raw       = msg.content || '';
   const tsPattern = /\[ts:\d+\]\s*/g;
   const cleaned   = raw.replace(tsPattern, '\n').trim();
   const lines     = cleaned.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -659,17 +650,15 @@ document.getElementById('edit-mode-fix-ts').addEventListener('click', () => {
   }));
 
   chat.messages.splice(msgIdx + 1, 0, ...newMsgs);
-
   lSave('chats', liaoChats);
   panel.style.display = 'none';
   renderChatMessages();
   alert('已修复并拆分为 ' + lines.length + ' 条消息。');
 });
 
-/* ---------- 编辑面板：删除本条消息 ---------- */
 document.getElementById('edit-mode-delete').addEventListener('click', () => {
-  const panel   = document.getElementById('edit-mode-panel');
-  const msgId   = panel.dataset.editMsgId;
+  const panel  = document.getElementById('edit-mode-panel');
+  const msgId  = panel.dataset.editMsgId;
   if (!msgId || currentChatIdx < 0) return;
   if (!confirm('确定删除这条消息？')) return;
 
@@ -683,7 +672,6 @@ document.getElementById('edit-mode-delete').addEventListener('click', () => {
   renderChatMessages();
 });
 
-/* ---------- 工具栏：批量删除选中消息 ---------- */
 document.getElementById('edit-mode-delete-selected').addEventListener('click', () => {
   if (!editModeSelectedIds.length) { alert('请先双击消息进行多选'); return; }
   if (!confirm('确定删除选中的 ' + editModeSelectedIds.length + ' 条消息？')) return;
@@ -697,7 +685,6 @@ document.getElementById('edit-mode-delete-selected').addEventListener('click', (
   updateEditModeToolbar();
 });
 
-/* ---------- 工具栏：退出编辑模式 ---------- */
 document.getElementById('edit-mode-exit').addEventListener('click', () => {
   editModeActive      = false;
   editModeSelectedIds = [];
@@ -996,7 +983,7 @@ document.getElementById('cs-import-persona-btn').addEventListener('click', () =>
           document.getElementById('cs-user-avatar-preview').src = p.avatar;
           csUserAvatarSrc = p.avatar;
         }
-        document.getElementById('liao-persona-pick-modal').style.display = 'none';
+               document.getElementById('liao-persona-pick-modal').style.display = 'none';
       });
       list.appendChild(card);
     });

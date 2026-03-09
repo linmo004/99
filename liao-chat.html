@@ -72,7 +72,7 @@
   <!-- 表情包面板 -->
   <div class="emoji-panel" id="emoji-panel" style="display:none;">
     <div class="emoji-panel-sidebar" id="emoji-panel-sidebar">
-      `<button class="emoji-sidebar-btn active" data-cat="all">全部</button>
+      <button class="emoji-sidebar-btn active" data-cat="all">全部</button>
       <div id="emoji-cat-list"></div>
       <button class="emoji-sidebar-btn" id="emoji-import-btn">导入</button>
       <button class="emoji-sidebar-btn" id="emoji-manage-btn">管理</button>
@@ -100,7 +100,6 @@
     <div class="cs-page active" id="cs-tab-role-page">
       <div class="cs-page-scroll">
 
-        <!-- 角色信息 -->
         <div class="cs-section-title">角色信息</div>
         <div class="cs-section-card">
           <div class="liao-avatar-preview-row">
@@ -124,7 +123,6 @@
           </div>
         </div>
 
-        <!-- 此聊天用户设置 -->
         <div class="cs-section-title">此聊天用户设置</div>
         <div class="cs-section-card">
           <div class="liao-avatar-preview-row">
@@ -149,7 +147,6 @@
           </div>
         </div>
 
-        <!-- 时间戳设置 -->
         <div class="cs-section-title">时间戳</div>
         <div class="cs-section-card">
           <div class="cs-row-item">
@@ -167,7 +164,6 @@
           </div>
         </div>
 
-        <!-- 聊天美化 -->
         <div class="cs-section-title">聊天美化</div>
         <div class="cs-section-card">
           <label class="liao-modal-label">角色气泡颜色</label>
@@ -195,7 +191,6 @@
           </div>
         </div>
 
-        <!-- 消息数量设置 -->
         <div class="cs-section-title">消息数量设置</div>
         <div class="cs-section-card">
           <label class="liao-modal-label">AI 可读取的消息数量（0 为无限）</label>
@@ -212,7 +207,7 @@
       </div>
     </div>
 
-    <!-- 第二页：角色日程（待开发） -->
+    <!-- 第二页：角色日程 -->
     <div class="cs-page" id="cs-tab-schedule-page">
       <div class="cs-page-scroll cs-coming-soon">
         <div class="cs-coming-soon-icon">◷</div>
@@ -223,23 +218,17 @@
 
     <!-- 第三页：角色记忆 -->
     <div class="cs-page" id="cs-tab-memory-page">
-      <!-- 子页切换按钮 -->
       <div class="memory-sub-tabs" id="memory-sub-tabs">
         <button class="memory-sub-tab-btn active" data-memorytab="chat-memory">聊天记忆</button>
         <button class="memory-sub-tab-btn" data-memorytab="other-memory">其他记忆</button>
       </div>
 
-      <!-- 聊天记忆子页 -->
       <div class="memory-sub-page active" id="chat-memory-page">
         <div class="cs-page-scroll">
-
-          <!-- 操作栏 -->
           <div class="memory-action-bar">
             <button class="liao-btn-primary" id="memory-ai-summarize-btn" style="flex:1;">AI 总结记忆</button>
             <button class="liao-btn-ghost" id="memory-manual-add-btn" style="flex:1;">手动添加记忆</button>
           </div>
-
-          <!-- 手动添加表单（默认隐藏） -->
           <div class="memory-add-form" id="memory-add-form" style="display:none;">
             <div class="cs-section-card">
               <label class="liao-modal-label">记忆内容</label>
@@ -257,39 +246,30 @@
               </div>
             </div>
           </div>
-
-          <!-- 长期记忆 -->
           <div class="cs-section-title">长期记忆</div>
           <div class="cs-section-card memory-list-card" id="memory-long-list">
             <div class="memory-empty">暂无长期记忆</div>
           </div>
-
-          <!-- 短期记忆 -->
           <div class="cs-section-title">短期记忆</div>
           <div class="cs-section-card memory-list-card" id="memory-short-list">
             <div class="memory-empty">暂无短期记忆</div>
           </div>
-
-          <!-- 重要记忆 -->
           <div class="cs-section-title">重要记忆</div>
           <div class="cs-section-card memory-list-card" id="memory-important-list">
             <div class="memory-empty">暂无重要记忆</div>
           </div>
-
         </div>
       </div>
 
-      <!-- 其他记忆子页 -->
       <div class="memory-sub-page" id="other-memory-page">
         <div class="cs-page-scroll">
           <div class="cs-section-title">其他 App 产生的记忆</div>
           <div id="other-memory-list" style="display:flex;flex-direction:column;gap:10px;"></div>
         </div>
       </div>
+    </div>
 
-    </div><!-- /cs-tab-memory-page -->
-
-    <!-- 第四页：角色手机（占位） -->
+    <!-- 第四页：角色手机 -->
     <div class="cs-page" id="cs-tab-rolephone-page">
       <div class="cs-page-scroll cs-coming-soon">
         <div class="cs-coming-soon-icon">▦</div>
@@ -299,7 +279,7 @@
     </div>
 
   </div>
-</div><!-- /liao-chat-settings -->
+</div>
 
 <!-- ===================== 记忆条目编辑弹窗 ===================== -->
 <div id="liao-memory-edit-modal" class="liao-bubble-modal" style="display:none;">
@@ -483,12 +463,12 @@
   </div>
 </div>
 
-<!-- ===================== 编辑模式工具栏（特殊功能栏上方，默认隐藏） ===================== -->
+<!-- ===================== 编辑模式工具栏 ===================== -->
 <div id="edit-mode-toolbar" style="display:none;
   position:fixed;bottom:0;left:0;right:0;z-index:550;
   background:rgba(44,52,72,0.96);backdrop-filter:blur(14px);
   -webkit-backdrop-filter:blur(14px);
-  padding:10px 14px 28px;display:none;flex-direction:row;
+  padding:10px 14px 28px;flex-direction:row;
   align-items:center;justify-content:space-between;gap:8px;">
   <span id="edit-mode-select-count"
     style="font-size:12px;color:rgba(255,255,255,0.7);flex-shrink:0;">
@@ -534,7 +514,6 @@
       color:var(--text-dark);background:var(--bg2,#F8F9FA);
       outline:none;font-family:inherit;box-sizing:border-box;">
 
-    <!-- 一键修复 [ts:] 并拆分 -->
     <button id="edit-mode-fix-ts"
       style="width:100%;background:rgba(153,200,237,0.18);
       color:var(--primary,#99C8ED);border:1.5px solid var(--light-blue,#B3D8F4);

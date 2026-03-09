@@ -21,9 +21,9 @@ function renderChatList() {
     const lastMsg = msgs.length ? msgs[msgs.length - 1] : null;
     let preview   = '暂无消息';
     if (lastMsg) {
-      if (lastMsg.recalled)         preview = '[撤回了一条消息]';
+      if (lastMsg.recalled)              preview = '[撤回了一条消息]';
       else if (lastMsg.type === 'image') preview = '[图片]';
-      else preview = lastMsg.content || '暂无消息';
+      else                               preview = lastMsg.content || '暂无消息';
     }
     const lastTime = lastMsg ? formatTime(lastMsg.ts) : '';
 
@@ -297,7 +297,9 @@ document.getElementById('chat-view-input').addEventListener('keydown', function 
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendUserMessage(); }
 });
 
-/* ---------- 输入框联想表情包推荐栏 ---------- */
+/* ============================================================
+   输入框联想表情包推荐栏
+   ============================================================ */
 document.getElementById('chat-view-input').addEventListener('input', function () {
   updateEmojiSuggestBar(this.value);
 });
@@ -308,16 +310,27 @@ function updateEmojiSuggestBar(inputVal) {
 
   const keyword = (inputVal || '').trim();
 
-  if (!keyword || !liaoEmojis || !liaoEmojis.length) {
+  /* 无关键词时隐藏 */
+  if (!keyword) {
     bar.innerHTML = '';
     bar.classList.remove('visible');
     return;
   }
 
+  /* 安全读取全局表情包数据，兼容脚本加载时序 */
+  const emojiList = (typeof liaoEmojis !== 'undefined' && Array.isArray(liaoEmojis))
+    ? liaoEmojis
+    : [];
+
+  if (!emojiList.length) {
+    bar.innerHTML = '';
+    bar.classList.remove('visible');
+    return;
+  }
+
+  /* 模糊匹配：名称包含关键词（不区分大小写） */
   const lower   = keyword.toLowerCase();
-  const matched = liaoEmojis.filter(e =>
-    e.name && e.name.toLowerCase().includes(lower)
-  );
+  const matched = emojiList.filter(e => e.name && e.name.toLowerCase().includes(lower));
 
   if (!matched.length) {
     bar.innerHTML = '';
@@ -325,6 +338,7 @@ function updateEmojiSuggestBar(inputVal) {
     return;
   }
 
+  /* 最多显示 20 条 */
   const toShow = matched.slice(0, 20);
 
   bar.innerHTML = '';
@@ -332,11 +346,11 @@ function updateEmojiSuggestBar(inputVal) {
     const item = document.createElement('div');
     item.className = 'emoji-suggest-item';
 
-    const img     = document.createElement('img');
-    img.src       = emoji.url;
-    img.alt       = emoji.name || '';
-    img.title     = emoji.name || '';
-    img.loading   = 'lazy';
+    const img   = document.createElement('img');
+    img.src     = emoji.url;
+    img.alt     = emoji.name || '';
+    img.title   = emoji.name || '';
+    img.loading = 'lazy';
 
     const nameEl       = document.createElement('span');
     nameEl.className   = 'emoji-suggest-item-name';
@@ -345,8 +359,11 @@ function updateEmojiSuggestBar(inputVal) {
     item.appendChild(img);
     item.appendChild(nameEl);
 
+    /* 点击推荐项：直接发送该表情包，清空输入框和推荐栏 */
     item.addEventListener('click', () => {
-      sendEmojiMsg(emoji);
+      if (typeof sendEmojiMsg === 'function') {
+        sendEmojiMsg(emoji);
+      }
       const inputEl = document.getElementById('chat-view-input');
       if (inputEl) inputEl.value = '';
       bar.innerHTML = '';
@@ -603,7 +620,7 @@ function applyBeautySettings(beauty) {
   const styleId = 'liao-beauty-style';
   let styleEl = document.getElementById(styleId);
   if (!styleEl) {
-    styleEl = document.createElement('style');
+    styleEl    = document.createElement('style');
     styleEl.id = styleId;
     document.head.appendChild(styleEl);
   }
@@ -615,12 +632,12 @@ function applyBeautySettings(beauty) {
   const custom  = beauty.customCSS        || '';
 
   styleEl.textContent = `
-    #liao-chat-messages .chat-msg-row:not(.user-row) .chat-msg-bubble {
+    #liao-chat-messages .chat-msg-row:not(.user-row) .chat-msg-bubble:not(.bubble-emoji-only):not(.bubble-transfer-only) {
       background: ${rColor} !important;
       border-radius: 4px ${rRadius}px ${rRadius}px ${rRadius}px !important;
       font-size: ${fSize}px !important;
     }
-    #liao-chat-messages .chat-msg-row.user-row .chat-msg-bubble {
+    #liao-chat-messages .chat-msg-row.user-row .chat-msg-bubble:not(.bubble-emoji-only):not(.bubble-transfer-only) {
       background: ${uColor} !important;
       border-radius: ${uRadius}px 4px ${uRadius}px ${uRadius}px !important;
       font-size: ${fSize}px !important;
@@ -629,6 +646,7 @@ function applyBeautySettings(beauty) {
     #liao-chat-messages .bubble-transfer-only {
       background: transparent !important;
       border: none !important;
+      padding: 0 !important;
       box-shadow: none !important;
     }
     ${custom}
