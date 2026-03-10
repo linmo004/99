@@ -9,37 +9,20 @@ var pendingImageSrc      = '';
 var currentTransferMsgId = null;
 var editingMsgIdx        = -1;
 
-/* ---- 消息编辑模式状态 ---- */
 var editModeActive      = false;
 var editModeSelectedIds = [];
 
 /* ============================================================
-   renderSpecialContent — 统一特殊内容渲染
-
-   消息格式示例：
-     [(梦想)发送了一个表情包：小狗哭哭]
-     [(梦想)发送了一条语音：好的好的]
-     [(梦想)发起了一笔转账：10.00元，备注：请吃饭]
-     [(梦想)发送了一张照片：一张猫咪的照片]
+   renderSpecialContent
    ============================================================ */
 function renderSpecialContent(content, msg) {
   if (!content) return { html: '', isEmojiOnly: false, isTransferOnly: false };
 
   const raw = content.trim();
 
-  /*
-   * 判断是否是"纯表情包消息"：
-   * 整条内容就是 [(任意名字)发送了一个表情包：名称]
-   * 名字里可能有括号，所以用 [\s\S]+? 宽松匹配
-   */
-  const isEmojiOnly    = /^\[\([\s\S]+?\)发送了一个表情包：[\s\S]+?\]$/.test(raw);
+  const isEmojiOnly    = /^\[\([^)]+\)发送了一个表情包：[^\]]+\]$/.test(raw);
+  const isTransferOnly = /^\[\([^)]+\)发起了一笔转账：[^\]]+\]$/.test(raw);
 
-  /*
-   * 判断是否是"纯转账消息"
-   */
-  const isTransferOnly = /^\[\([\s\S]+?\)发起了一笔转账：[\s\S]+?\]$/.test(raw);
-
-  /* 转账按钮 HTML */
   function transferButtons(msgId, status) {
     if (status === 'accepted') return '<div class="transfer-inline-status accepted">已收款</div>';
     if (status === 'declined') return '<div class="transfer-inline-status declined">已拒绝</div>';
@@ -49,28 +32,20 @@ function renderSpecialContent(content, msg) {
       '</div>';
   }
 
-  /*
-   * 全局正则：匹配所有特殊消息片段
-   * 格式：[(名字)动作：内容]
-   * 注意：名字用 \([^)]+\) 匹配括号内内容，避免贪婪吃掉后面的括号
-   */
-  const globalRe = /\[\(([^)]+)\)(?:发送了一个表情包：([^\]]+)|发送了一条语音：([\s\S]+?(?=\]))|发起了一笔转账：(\d+\.?\d*)元(?:，备注：([\s\S]+?(?=\])))?|发送了一张照片：([\s\S]+?(?=\])))\]/g;
+  const globalRe = /\[\(([^)]+)\)(?:发送了一个表情包：([^\]]+)|发送了一条语音：([^\]]+)|发起了一笔转账：(\d+\.?\d*)元(?:，备注：([^\]]+))?|发送了一张照片：([^\]]+))\]/g;
 
   let result = '';
   let last   = 0;
   let match;
 
   while ((match = globalRe.exec(raw)) !== null) {
-    /* 匹配前的普通文本 */
     if (match.index > last) {
       result += escHtml(raw.slice(last, match.index));
     }
 
-    const full     = match[0];
-    /* match[1] = 名字（括号内） */
+    const full = match[0];
 
     if (match[2] !== undefined) {
-      /* ---- 表情包 ---- */
       const emojiName = match[2].trim();
       const emojiList = (typeof liaoEmojis !== 'undefined' && Array.isArray(liaoEmojis)) ? liaoEmojis : [];
       const found     = emojiList.find(e => e.name === emojiName);
@@ -78,22 +53,18 @@ function renderSpecialContent(content, msg) {
         result += '<img class="emoji-msg-bubble" src="' + escHtml(found.url) +
           '" alt="' + escHtml(emojiName) + '" title="' + escHtml(emojiName) + '">';
       } else {
-        /* 表情包名称未找到，显示原文 */
         result += escHtml(full);
       }
-
     } else if (match[3] !== undefined) {
-      /* ---- 语音 ---- */
       const voiceText = match[3].trim();
       const duration  = calcVoiceDuration(voiceText);
-      result += '<div class="voice-bubble special-inline-bubble" data-voice-text="' + escHtml(voiceText) + '" title="点击查看语音内容">' +
+      result += '<div class="voice-bubble special-inline-bubble" data-voice-text="' +
+        escHtml(voiceText) + '" title="点击查看语音内容">' +
         '<span class="voice-bubble-icon">◎</span>' +
         '<div class="voice-bubble-bar">' + buildVoiceWaves(duration) + '</div>' +
         '<span class="voice-bubble-duration">' + duration + '"</span>' +
         '</div>';
-
     } else if (match[4] !== undefined) {
-      /* ---- 转账 ---- */
       const amount  = parseFloat(match[4]) || 0;
       const note    = match[5] ? match[5].trim() : '';
       const msgId   = msg ? (msg.id || '') : '';
@@ -110,20 +81,16 @@ function renderSpecialContent(content, msg) {
         '<span class="transfer-bubble-amount">' + amount.toFixed(2) + ' 元</span>' +
         '</div>' +
         (note ? '<div class="transfer-bubble-note">' + escHtml(note) + '</div>' : '') +
-        btnHtml +
-        '</div>';
-
+        btnHtml + '</div>';
     } else if (match[6] !== undefined) {
-      /* ---- 假图片 ---- */
       const desc      = match[6].trim();
       const shortDesc = desc.slice(0, 12) + (desc.length > 12 ? '…' : '');
-      result += '<div class="fake-photo-bubble special-inline-bubble" data-photo-desc="' + escHtml(desc) + '">' +
+      result += '<div class="fake-photo-bubble special-inline-bubble" data-photo-desc="' +
+        escHtml(desc) + '">' +
         '<div class="fake-photo-bubble-inner">' +
         '<span class="fake-photo-icon">▤</span>' +
         '<span class="fake-photo-label">' + escHtml(shortDesc) + '</span>' +
-        '</div>' +
-        '</div>';
-
+        '</div></div>';
     } else {
       result += escHtml(full);
     }
@@ -131,7 +98,6 @@ function renderSpecialContent(content, msg) {
     last = match.index + match[0].length;
   }
 
-  /* 剩余普通文本 */
   if (last < raw.length) {
     result += escHtml(raw.slice(last));
   }
@@ -152,7 +118,6 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
     msg.id = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2);
   }
 
-  /* 撤回消息 */
   if (msg.recalled) {
     const recallRow         = document.createElement('div');
     recallRow.className     = 'recall-notice';
@@ -172,7 +137,6 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
   row.className     = 'chat-msg-row' + (isUser ? ' user-row' : '');
   row.dataset.msgId = msg.id;
 
-  /* 时间戳 */
   const tsEl         = document.createElement('span');
   tsEl.className     = 'chat-msg-timestamp';
   tsEl.dataset.msgId = msg.id;
@@ -186,17 +150,32 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
     }
   });
 
-  /* 气泡 */
+    const avatarEl     = document.createElement('img');
+  avatarEl.className = 'chat-msg-avatar' + (isUser ? ' user-avatar' : '');
+  avatarEl.src       = isUser ? uAvatar : roleAvatar;
+  avatarEl.alt       = '';
+
+  /* 角色头像点击弹出状态栏 */
+  if (!isUser && msg.statusBar) {
+    avatarEl.style.cursor = 'pointer';
+    avatarEl.title = '查看此刻状态 ✦';
+    avatarEl.addEventListener('click', function (e) {
+      e.stopPropagation();
+      liaoShowStatusBar(msg.statusBar, role);
+    });
+  }
+
+
+
+  const msgType = msg.type || 'text';
+
   const bubbleEl     = document.createElement('div');
   bubbleEl.className = 'chat-msg-bubble';
 
   let bubbleInner = '';
-
   if (msg.quoteContent) {
     bubbleInner += '<div class="msg-quote-block">' + escHtml(msg.quoteContent) + '</div>';
   }
-
-  const msgType = msg.type || 'text';
 
   if (msgType === 'image') {
     bubbleInner += '<img class="real-image-bubble" src="' + escHtml(msg.content) + '" alt="图片">';
@@ -205,23 +184,9 @@ function appendMessageBubble(msg, role, chatUserAvatar, animate) {
     const { html, isEmojiOnly, isTransferOnly } = renderSpecialContent(msg.content || '', msg);
     bubbleInner += html;
     bubbleEl.innerHTML = bubbleInner;
-
-    /* 表情包消息：气泡透明无边框 */
-    if (isEmojiOnly) {
-      bubbleEl.classList.add('bubble-emoji-only');
-    }
-    /* 转账消息：气泡透明无边框 */
-    else if (isTransferOnly) {
-      bubbleEl.classList.add('bubble-transfer-only');
-    }
-    /* 其他（语音/照片/文字）：保留正常气泡 */
+    if (isEmojiOnly)         bubbleEl.classList.add('bubble-emoji-only');
+    else if (isTransferOnly) bubbleEl.classList.add('bubble-transfer-only');
   }
-
-  /* 头像 */
-  const avatarEl     = document.createElement('img');
-  avatarEl.className = 'chat-msg-avatar' + (isUser ? ' user-avatar' : '');
-  avatarEl.src       = isUser ? uAvatar : roleAvatar;
-  avatarEl.alt       = '';
 
   if (isUser) {
     row.appendChild(tsEl);
@@ -381,7 +346,7 @@ function openMsgActionMenu(e, msgId) {
 
   actions.push({ label: '引用', fn: () => {
     currentQuoteMsgIdx = msgIdx;
-    const preview = (msg.content || '').slice(0, 30);
+    const preview =     (msg.content || '').slice(0, 30);
     document.getElementById('chat-quote-bar-text').textContent = preview;
     document.getElementById('chat-quote-bar').style.display = 'flex';
     closeActionMenu();
@@ -465,7 +430,7 @@ function closeActionMenu() {
   document.getElementById('liao-msg-action-menu').style.display = 'none';
 }
 
-/* ---------- 时间戳菜单的消息编辑弹窗 ---------- */
+/* ---------- 消息编辑弹窗 ---------- */
 document.getElementById('liao-msg-edit-confirm').addEventListener('click', () => {
   if (editingMsgIdx < 0 || currentChatIdx < 0) return;
   const chat = liaoChats[currentChatIdx];
@@ -505,6 +470,57 @@ document.getElementById('liao-fake-photo-close').addEventListener('click', () =>
   document.getElementById('liao-fake-photo-modal').style.display = 'none';
 });
 
+/* ================================================================
+   状态栏弹窗（在了了聊天界面内，点击角色头像触发）
+   ================================================================ */
+function liaoShowStatusBar(statusBar, role) {
+  var modal = document.getElementById('liao-status-bar-modal');
+  if (!modal) return;
+
+  var roleName = (role && (role.nickname || role.realname)) || '角色';
+
+  var html =
+    '<div class="rp-sb-item">' +
+      '<span class="rp-sb-label">' + roleName + ' 状态</span>' +
+      '<span class="rp-sb-value">' + escHtml(statusBar.status || '—') + '</span>' +
+    '</div>' +
+    '<div class="rp-sb-item">' +
+      '<span class="rp-sb-label">' + roleName + ' 心情</span>' +
+      '<span class="rp-sb-value">' + escHtml(statusBar.mood || '—') + '</span>' +
+    '</div>' +
+    '<div class="rp-sb-item">' +
+      '<span class="rp-sb-label">' + roleName + ' 内心所想</span>' +
+      '<span class="rp-sb-value">' + escHtml(statusBar.inner || '—') + '</span>' +
+    '</div>' +
+    '<div class="rp-sb-item">' +
+      '<span class="rp-sb-label">' + roleName + ' 消息草稿箱（未发出的消息）</span>' +
+      '<span class="rp-sb-value rp-sb-draft">' + escHtml(statusBar.draft || '（空）') + '</span>' +
+    '</div>' +
+    '<div class="rp-sb-item">' +
+      '<span class="rp-sb-label">两句话角色趣事</span>' +
+      '<span class="rp-sb-value">' + escHtml(statusBar.funFact || '—') + '</span>' +
+    '</div>' +
+    '<div class="rp-sb-item rp-sb-theater">' +
+      '<span class="rp-sb-label">随机小剧场</span>' +
+      '<span class="rp-sb-value">' + escHtml(statusBar.theater || '—') + '</span>' +
+    '</div>';
+
+  var body = document.getElementById('liao-sb-body');
+  if (body) body.innerHTML = html;
+  modal.style.display = 'flex';
+}
+
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'liao-sb-close') {
+    var modal = document.getElementById('liao-status-bar-modal');
+    if (modal) modal.style.display = 'none';
+  }
+  /* 点遮罩关闭 */
+  if (e.target && e.target.id === 'liao-status-bar-modal') {
+    e.target.style.display = 'none';
+  }
+});
+
 /* ============================================================
    特殊功能状态栏
    ============================================================ */
@@ -531,9 +547,9 @@ function initSpecialBar() {
     document.getElementById('liao-image-preview').src = '';
     document.getElementById('liao-image-modal').style.display = 'flex';
   });
-  document.getElementById('csb-rolephone').addEventListener('click', () => {
-    alert('角色手机功能建设中，敬请期待');
-  });
+
+  /* ---- rolephone 入口：完全由 rolephone.js 的 bindRpEntry 处理，此处不重复绑定 ---- */
+
   document.getElementById('csb-edit').addEventListener('click', () => {
     toggleEditMode();
   });
@@ -543,7 +559,7 @@ function initSpecialBar() {
    消息编辑模式
    ============================================================ */
 function toggleEditMode() {
-  editModeActive = !editModeActive;
+  editModeActive      = !editModeActive;
   editModeSelectedIds = [];
 
   const btn = document.getElementById('csb-edit');
@@ -702,8 +718,8 @@ document.getElementById('edit-mode-delete-selected').addEventListener('click', (
   if (!confirm('确定删除选中的 ' + editModeSelectedIds.length + ' 条消息？')) return;
   if (currentChatIdx < 0) return;
 
-  const chat      = liaoChats[currentChatIdx];
-  chat.messages   = chat.messages.filter(m => !editModeSelectedIds.includes(m.id));
+  const chat    = liaoChats[currentChatIdx];
+  chat.messages = chat.messages.filter(m => !editModeSelectedIds.includes(m.id));
   editModeSelectedIds = [];
   lSave('chats', liaoChats);
   renderChatMessages();
@@ -901,6 +917,239 @@ document.getElementById('cs-timestamp-save-btn').addEventListener('click', () =>
 });
 
 /* ============================================================
+   角色手机设置页逻辑
+   ============================================================ */
+function rpGetCurrentRoleId() {
+  if (currentChatIdx < 0) return '';
+  const chat = liaoChats[currentChatIdx];
+  return chat ? chat.roleId : '';
+}
+
+function rpUpdatePinStatus() {
+  const roleId  = rpGetCurrentRoleId();
+  const statusEl = document.getElementById('rp-pin-status');
+  if (!statusEl) return;
+  if (!roleId) { statusEl.textContent = '未设置'; return; }
+  const data = rpLoad(roleId);
+  statusEl.textContent = (data.pin && data.pin.length === 4) ? '已设置（4位）' : '未设置';
+}
+
+function rpLoadSettingsPage() {
+  const roleId = rpGetCurrentRoleId();
+  if (!roleId) return;
+  const data = rpLoad(roleId);
+
+  rpUpdatePinStatus();
+
+  const wpEl = document.getElementById('rp-wallpaper-url');
+  if (wpEl) wpEl.value = data.wallpaper || '';
+
+  const poEl = document.getElementById('rp-polaroid-url');
+  if (poEl) poEl.value = data.polaroidImg || '';
+
+  const limits = data.appPromptLimits || {};
+  const liao   = document.getElementById('rp-limit-liao');
+  const notes  = document.getElementById('rp-limit-notes');
+  const health = document.getElementById('rp-limit-health');
+  const forum  = document.getElementById('rp-limit-forum');
+  if (liao)   liao.value   = limits.liao   || '';
+  if (notes)  notes.value  = limits.notes  || '';
+  if (health) health.value = limits.health || '';
+  if (forum)  forum.value  = limits.forum  || '';
+
+  const icons = data.appIcons || {};
+  const iLiao   = document.getElementById('rp-icon-liao');
+  const iNotes  = document.getElementById('rp-icon-notes');
+  const iHealth = document.getElementById('rp-icon-health');
+  const iForum  = document.getElementById('rp-icon-forum');
+  if (iLiao)   iLiao.value   = icons.liao   || '';
+  if (iNotes)  iNotes.value  = icons.notes  || '';
+  if (iHealth) iHealth.value = icons.health || '';
+  if (iForum)  iForum.value  = icons.forum  || '';
+}
+
+/* 切换到角色手机 tab 时加载数据 */
+const origSwitchChatSettingsTab = switchChatSettingsTab;
+switchChatSettingsTab = function (tabId) {
+  origSwitchChatSettingsTab(tabId);
+  if (tabId === 'cs-tab-rolephone') rpLoadSettingsPage();
+};
+
+/* AI 生成密码 */
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'rp-ai-gen-pin-btn') {
+    const roleId = rpGetCurrentRoleId();
+    if (!roleId) { alert('请先打开一个聊天'); return; }
+    const role = liaoRoles.find(r => r.id === roleId);
+    if (!role) return;
+    const roleName    = role.nickname || role.realname || '角色';
+    const roleSetting = role.setting || '';
+    const systemPrompt =
+      '你扮演角色' + roleName + '，' + roleSetting + '。' +
+      '请为你的手机设置一个4位数密码，只输出4位数字，不输出任何其他内容。';
+    const msgEl = document.getElementById('rp-pin-msg');
+    if (msgEl) { msgEl.style.color = '#9aafc4'; msgEl.textContent = 'AI 生成中…'; }
+
+    const cfg   = loadApiConfig();
+    const model = loadApiModel();
+    if (!cfg || !cfg.url) { alert('请先配置 API'); return; }
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (cfg.key) headers['Authorization'] = 'Bearer ' + cfg.key;
+
+    fetch(cfg.url.replace(/\/$/, '') + '/chat/completions', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: model || 'gpt-3.5-turbo',
+        messages: [{ role: 'system', content: systemPrompt }],
+        stream: false
+      })
+    })
+    .then(r => r.json())
+    .then(j => {
+      const raw = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
+      const pin = raw.replace(/\D/g, '').slice(0, 4);
+      if (pin.length !== 4) throw new Error('生成的密码格式不正确');
+
+      const data = rpLoad(roleId);
+      data.pin = pin;
+      rpSave(roleId, data);
+
+      /* 同时追加到角色记忆 */
+      const chat = liaoChats.find(c => c.roleId === roleId);
+      if (chat) {
+        if (!chat.memory) chat.memory = { longTerm: [], shortTerm: [], important: [], other: {} };
+        if (!chat.memory.other) chat.memory.other = {};
+        if (!chat.memory.other.rolephone) chat.memory.other.rolephone = [];
+        chat.memory.other.rolephone.push({
+          id:      'rpmem_' + Date.now(),
+          content: '我的手机密码是' + pin,
+          ts:      Date.now()
+        });
+        lSave('chats', liaoChats);
+      }
+
+      rpUpdatePinStatus();
+      if (msgEl) { msgEl.style.color = '#4caf84'; msgEl.textContent = 'AI 已生成密码并保存（密码已存入角色记忆）'; }
+      setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 3000);
+    })
+    .catch(err => {
+      if (msgEl) { msgEl.style.color = '#e07a7a'; msgEl.textContent = '生成失败：' + err.message; }
+    });
+  }
+});
+
+/* 手动设置密码 */
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'rp-manual-pin-btn') {
+    const roleId = rpGetCurrentRoleId();
+    if (!roleId) { alert('请先打开一个聊天'); return; }
+    const pin = prompt('请输入4位数字密码');
+    if (!pin) return;
+    if (!/^\d{4}$/.test(pin)) { alert('密码必须为4位数字'); return; }
+    const data = rpLoad(roleId);
+    data.pin = pin;
+    rpSave(roleId, data);
+    rpUpdatePinStatus();
+    const msgEl = document.getElementById('rp-pin-msg');
+    if (msgEl) { msgEl.style.color = '#4caf84'; msgEl.textContent = '密码已保存'; }
+    setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 2000);
+  }
+});
+
+/* 清除密码 */
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'rp-clear-pin-btn') {
+    const roleId = rpGetCurrentRoleId();
+    if (!roleId) return;
+    if (!confirm('确定清除手机密码？')) return;
+    const data = rpLoad(roleId);
+    data.pin = '';
+    rpSave(roleId, data);
+    rpUpdatePinStatus();
+    const msgEl = document.getElementById('rp-pin-msg');
+    if (msgEl) { msgEl.style.color = '#4caf84'; msgEl.textContent = '密码已清除'; }
+    setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 2000);
+  }
+});
+
+/* 壁纸本地上传 */
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'rp-wallpaper-local-btn') {
+    const fi = document.getElementById('rp-wallpaper-file');
+    if (fi) fi.click();
+  }
+});
+document.addEventListener('change', function (e) {
+  if (e.target && e.target.id === 'rp-wallpaper-file') {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      let src = ev.target.result;
+      if (typeof compressImage === 'function') src = await compressImage(src, 1200, 0.75);
+      const urlEl = document.getElementById('rp-wallpaper-url');
+      if (urlEl) urlEl.value = src;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
+});
+
+/* 拍立得本地上传 */
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'rp-polaroid-local-btn') {
+    const fi = document.getElementById('rp-polaroid-file');
+    if (fi) fi.click();
+  }
+});
+document.addEventListener('change', function (e) {
+  if (e.target && e.target.id === 'rp-polaroid-file') {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      let src = ev.target.result;
+      if (typeof compressImage === 'function') src = await compressImage(src, 800, 0.80);
+      const urlEl = document.getElementById('rp-polaroid-url');
+      if (urlEl) urlEl.value = src;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
+});
+
+/* 保存角色手机设置 */
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'rp-settings-save-btn') {
+    const roleId = rpGetCurrentRoleId();
+    if (!roleId) { alert('请先打开一个聊天'); return; }
+    const data = rpLoad(roleId);
+
+    const wpVal = (document.getElementById('rp-wallpaper-url') || {}).value || '';
+    const poVal = (document.getElementById('rp-polaroid-url')  || {}).value || '';
+    data.wallpaper   = wpVal.trim();
+    data.polaroidImg = poVal.trim();
+
+    data.appPromptLimits = {
+      liao:   ((document.getElementById('rp-limit-liao')   || {}).value || '').trim(),
+      notes:  ((document.getElementById('rp-limit-notes')  || {}).value || '').trim(),
+      health: ((document.getElementById('rp-limit-health') || {}).value || '').trim(),
+      forum:  ((document.getElementById('rp-limit-forum')  || {}).value || '').trim(),
+    };
+
+    data.appIcons = {
+      liao:   ((document.getElementById('rp-icon-liao')   || {}).value || '').trim(),
+      notes:  ((document.getElementById('rp-icon-notes')  || {}).value || '').trim(),
+      health: ((document.getElementById('rp-icon-health') || {}).value || '').trim(),
+      forum:  ((document.getElementById('rp-icon-forum')  || {}).value || '').trim(),
+    };
+
+    rpSave(roleId, data);
+    alert('角色手机设置已保存');
+  }
+});
+
+/* ============================================================
    角色库渲染
    ============================================================ */
 function renderRoleLib() {
@@ -1024,3 +1273,4 @@ document.getElementById('liao-persona-pick-cancel').addEventListener('click', ()
    初始化
    ============================================================ */
 initSpecialBar();
+
