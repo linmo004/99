@@ -1309,7 +1309,7 @@ gs.participants.forEach(p => {
   /* ============================================================
      存档（修复：确保序列化完整，写入前验证）
      ============================================================ */
-    function btrDoSave() {
+      function btrDoSave() {
     if (!gs) { alert('当前无游戏进度'); return; }
 
     const now = new Date();
@@ -1318,15 +1318,35 @@ gs.participants.forEach(p => {
       now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) +
       ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
 
-    /* 裁剪大字段，避免超出localStorage限制 */
-    const gsToSave = JSON.parse(JSON.stringify(gs));
-    gsToSave.narrativeHistory = gs.narrativeHistory.slice(-2);
-    gsToSave.danmakuHistory   = gs.danmakuHistory.slice(-10);
-    gsToSave.broadcastQueue   = gs.broadcastQueue.slice(-10);
+    const gsMin = {
+      mode:            gs.mode,
+      userSetup:       gs.userSetup,
+      /* 角色不存设定，只存身份识别信息，ai会根据角色名自动代入 */
+      participants:    gs.participants.map(p => ({
+        id:     p.id,
+        name:   p.name,
+        avatar: p.avatar,
+        isUser: p.isUser
+      })),
+      outline:          gs.outline,
+      scene:            gs.scene,
+      totalDays:        gs.totalDays,
+      currentDayIndex:  gs.currentDayIndex,
+      aliveList:        gs.aliveList,
+      userStats:        gs.userStats,
+      inventory:        gs.inventory,
+      narrativeHistory: gs.narrativeHistory.slice(-1),
+      broadcastQueue:   gs.broadcastQueue.slice(-3),
+      danmakuHistory:   [],
+      pendingChat:      '',
+      isUserDead:       gs.isUserDead,
+      gameOver:         gs.gameOver,
+      winner:           gs.winner,
+    };
 
     let serialized;
     try {
-      serialized = JSON.stringify(gsToSave);
+      serialized = JSON.stringify(gsMin);
     } catch (e) {
       alert('存档序列化失败：' + e.message);
       return;
@@ -1352,16 +1372,18 @@ gs.participants.forEach(p => {
     saves.push(record);
     if (saves.length > MAX_SAVES) saves = saves.slice(-MAX_SAVES);
 
-    try {
-      localStorage.setItem(SAVES_KEY, JSON.stringify(saves));
-    } catch (e) {
-      /* 如果还是超限，尝试只保留1条存档再写 */
+    /* 写入失败则逐步缩减存档数量直到成功 */
+    let written = false;
+    for (let keep = saves.length; keep >= 1 && !written; keep--) {
       try {
-        localStorage.setItem(SAVES_KEY, JSON.stringify([record]));
-      } catch (e2) {
-        alert('存档写入失败，设备存储空间不足：' + e2.message);
-        return;
-      }
+        localStorage.setItem(SAVES_KEY, JSON.stringify(saves.slice(-keep)));
+        written = true;
+      } catch (e) { /* 继续缩减 */ }
+    }
+
+    if (!written) {
+      alert('设备存储空间严重不足，无法存档');
+      return;
     }
 
     btrUpdateContinueBtn();
@@ -1372,7 +1394,7 @@ gs.participants.forEach(p => {
   /* ============================================================
      退出警告弹窗（修复：叠加式，疯批恐怖文案）
      ============================================================ */
-  const EXIT_WARN_TEXTS = [
+    const EXIT_WARN_TEXTS = [
     {
       title: '⚠ 你要离开了吗',
       text:  '退出将丢失未存档的进度。\n你确定要离开这里吗？'
@@ -1395,15 +1417,15 @@ gs.participants.forEach(p => {
     },
     {
       title: '哈哈哈哈哈哈哈',
-      text:  '继续点确定吧。\n弹窗会一直出现的。\n点取消才能真正退出。'
+      text:  '继续点确定吧。\n弹窗会一直出现的。\n你是出不去的。'
     },
     {
       title: '已记录你的位置',
-      text:  '我们知道你在哪里。\n点取消。现在就点。'
+      text:  '我们知道你在哪里。\n…别以为你能逃走。'
     },
     {
       title: '╔═══ 最终警告 ═══╗',
-      text:  '你已触发第' + '∞' + '层确认协议。\n点击取消以终止序列。'
+      text:  '你已触发第∞层确认协议。\n永远留在这里吧…我会一直盯着你的👁️。'
     }
   ];
 
@@ -1417,20 +1439,18 @@ gs.participants.forEach(p => {
 
     const mask = document.createElement('div');
     mask.className = 'btr-warn-mask';
-
-    /* 随着深度增加，弹窗位置略微偏移，营造叠加感 */
-    const offsetX = (depth % 2 === 0 ? 1 : -1) * Math.min(depth * 8, 60);
-    const offsetY = Math.min(depth * 6, 80);
+    mask.style.cssText =
+      'position:absolute;inset:0;z-index:' + (100 + depth) + ';' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'background:rgba(0,0,0,0.35);';
 
     const box = document.createElement('div');
     box.className = 'btr-warn-box';
-    box.style.transform = 'translate(' + offsetX + 'px, -' + offsetY + 'px)';
-    box.style.transition = 'transform 0.15s';
-    /* 越深越红 */
-    if (depth >= 3) {
-      box.style.borderColor = '#ff0000';
-      box.style.boxShadow   = '0 0 ' + (20 + depth * 8) + 'px rgba(255,0,0,0.7)';
-    }
+    box.style.cssText =
+      'position:relative;' +
+      'border-color:' + (depth >= 3 ? '#ff0000' : '#cc8800') + ';' +
+      'box-shadow:0 0 ' + (20 + depth * 6) + 'px rgba(255,' +
+      Math.max(0, 100 - depth * 15) + ',0,0.75);';
 
     box.innerHTML =
       '<div class="btr-warn-title">' + info.title + '</div>' +
@@ -1443,25 +1463,23 @@ gs.participants.forEach(p => {
     mask.appendChild(box);
     layer.appendChild(mask);
 
-    /* 点击遮罩空白处：关闭所有弹窗，回到游戏 */
     mask.addEventListener('click', function (e) {
       if (e.target !== mask) return;
       while (layer.firstChild) layer.removeChild(layer.firstChild);
       layer.style.display = 'none';
     });
 
-    /* 确定：叠加新弹窗（不关闭旧的） */
     box.querySelector('.btr-warn-confirm').addEventListener('click', () => {
       btrShowExitWarning(onExit, depth + 1);
     });
 
-    /* 取消：真正退出，清空所有弹窗 */
     box.querySelector('.btr-warn-cancel').addEventListener('click', () => {
       while (layer.firstChild) layer.removeChild(layer.firstChild);
       layer.style.display = 'none';
       onExit();
     });
   }
+
 
   /* ============================================================
      用户被淘汰
