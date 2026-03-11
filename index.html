@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="rolephone-statusbar.css">
 <link rel="stylesheet" href="page3.css">
 <link rel="stylesheet" href="chess-app.css">
+<link rel="stylesheet" href="batoru.css">
 </head>
 <body>
 
@@ -38,6 +39,7 @@
 <div id="partial-garden-app"></div>
 <div id="partial-rolephone"></div>
 <div id="partial-chess-app"></div>
+<div id="partial-batoru"></div>
 
 <script>
 (function () {
@@ -53,6 +55,7 @@
     { id: 'partial-garden-app',   file: 'garden.html' },
     { id: 'partial-rolephone',    file: 'rolephone.html' },
     { id: 'partial-chess-app',    file: 'chess-app.html' },
+    { id: 'partial-batoru', file: 'batoru.html' },
   ];
 
   async function loadAll() {
@@ -115,6 +118,7 @@
     await loadScript('chess-app.js');
     await loadScript('rolephone.js');
     await loadScript('page3.js');
+    await loadScript('batoru.js');
     if (typeof window.initSettings === 'function') window.initSettings();
   }
 
