@@ -24,6 +24,15 @@
 <link rel="stylesheet" href="page3.css">
 <link rel="stylesheet" href="chess-app.css">
 <link rel="stylesheet" href="batoru.css">
+<link rel="stylesheet" href="liao-cardbook.css">
+<link rel="stylesheet" href="storage-manager.css">
+<link rel="stylesheet" href="liao-schedule.css">
+<link rel="stylesheet" href="liao-autoreply.css">
+<link rel="stylesheet" href="ripple.css">
+<link rel="stylesheet" href="music.css">
+<link rel="stylesheet" href="liao-group.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
 </head>
 <body>
 
@@ -40,6 +49,9 @@
 <div id="partial-rolephone"></div>
 <div id="partial-chess-app"></div>
 <div id="partial-batoru"></div>
+<div id="partial-storage-manager"></div>
+<div id="partial-ripple"></div>
+<div id="partial-music"></div>
 
 <script>
 (function () {
@@ -56,6 +68,9 @@
     { id: 'partial-rolephone',    file: 'rolephone.html' },
     { id: 'partial-chess-app',    file: 'chess-app.html' },
     { id: 'partial-batoru', file: 'batoru.html' },
+    { id: 'partial-storage-manager', file: 'storage-manager.html' },
+    { id: 'partial-ripple', file: 'ripple.html' },
+    { id: 'partial-music',           file: 'music.html' },
   ];
 
   async function loadAll() {
@@ -96,6 +111,7 @@
   }
 
   async function initScripts() {
+    await loadScript('db-images.js');
     await loadScript('app.js');
     await loadScript('settings-1.js');
     await loadScript('settings-2.js');
@@ -107,6 +123,7 @@
     await loadScript('liao-chat.js');
     await loadScript('liao-special.js');
     await loadScript('liao-emoji.js');
+    await loadScript('liao-schedule.js');
     await loadScript('liao-memory.js');
     await loadScript('liao-persona.js');
     await loadScript('liao-favorites.js');
@@ -119,6 +136,13 @@
     await loadScript('rolephone.js');
     await loadScript('page3.js');
     await loadScript('batoru.js');
+    await loadScript('liao-cardbook.js');
+    await loadScript('storage-manager.js');
+    await loadScript('liao-autoreply.js');
+    await loadScript('ripple.js');
+    await loadScript('music.js');
+    await loadScript('liao-group.js');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
     if (typeof window.initSettings === 'function') window.initSettings();
   }
 

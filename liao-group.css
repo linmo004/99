@@ -1,0 +1,112 @@
+/* ============================================================
+   liao-group.css — 群聊样式
+   ============================================================ */
+
+/* ── 群头像网格（2x2） ── */
+.group-avatar-grid {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: rgba(153,200,237,0.2);
+}
+
+/* 只有1个成员时单张图全铺 */
+.group-avatar-single {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(153,200,237,0.28);
+}
+
+/* 网格里每个圆形头像 */
+.group-avatar-cell {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* ── 成员人数标签 ── */
+.group-member-count {
+  font-size: 10px;
+  color: var(--text-light, #9aafc4);
+  font-weight: 400;
+  margin-left: 5px;
+}
+
+/* ── 新建群聊成员选择条目 ── */
+.group-member-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--bg2, #F8F9FA);
+  border: 1.5px solid rgba(153,200,237,0.15);
+  cursor: pointer;
+  transition: background .13s;
+}
+
+.group-member-pick-item:active {
+  background: rgba(153,200,237,0.12);
+}
+
+.group-member-checkbox {
+  accent-color: var(--primary, #99C8ED);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.group-member-pick-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(153,200,237,0.28);
+}
+
+.group-member-pick-name {
+  font-size: 13px;
+  color: var(--text-dark, #2c3448);
+  font-weight: 500;
+}
+
+/* ── 群聊气泡上方角色名 ── */
+.group-msg-sender-name {
+  font-size: 10px;
+  color: var(--text-light, #9aafc4);
+  margin-bottom: 2px;
+  padding-left: 2px;
+  font-weight: 500;
+}
+
+/* ── 暗色模式 ── */
+body.dark-mode .group-member-pick-item {
+  background: #22242c;
+  border-color: rgba(80,120,160,0.15);
+}
+
+body.dark-mode .group-member-pick-name {
+  color: #e8eaf0;
+}
+
+/* ── 群聊气泡包裹（名字+气泡） ── */
+.group-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  max-width: 80vw;
+}
+
+.chat-msg-row.user-row .group-bubble-wrap {
+  align-items: flex-end;
+}

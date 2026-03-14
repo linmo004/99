@@ -20,6 +20,7 @@ let liaoSuiyan     = lLoad('suiyan', []);
 let liaoUserName   = lLoad('userName', '用户');
 let liaoUserAvatar = lLoad('userAvatar', 'https://api.dicebear.com/7.x/bottts-neutral/svg?seed=user');
 let liaoBgSrc      = lLoad('suiyanBg', '');
+let liaoGroups = lLoad('groups', []); // 群聊数据
 
 let currentChatIdx = -1;
 
@@ -103,8 +104,6 @@ function closeLiaoApp() {
   document.getElementById('liao-app').classList.remove('show');
 }
 
-document.getElementById('liao-close-btn').addEventListener('click', closeLiaoApp);
-
 /* ---------- 标签切换 ---------- */
 function switchLiaoTab(tabId) {
   document.querySelectorAll('.liao-tab-btn').forEach(btn => {
@@ -113,16 +112,35 @@ function switchLiaoTab(tabId) {
   document.querySelectorAll('.liao-panel').forEach(panel => {
     panel.classList.toggle('active', panel.dataset.panel === tabId);
   });
+
   if (tabId === 'chatlist') renderChatList();
-  if (tabId === 'rolelib')  { if (typeof renderRoleLib === 'function') renderRoleLib(); }
-  if (tabId === 'suiyan')   renderSuiyan();
+  if (tabId === 'rolelib') {
+    const countEl = document.getElementById('lcb-cover-count');
+    if (countEl) {
+      const count = typeof liaoRoles !== 'undefined' ? liaoRoles.length : 0;
+      countEl.textContent = count + ' 位角色';
+    }
+  }
+  /* ↓ 加上这一行 */
+  if (tabId === 'myhome') {
+    if (typeof window.initMyhomePanel === 'function') window.initMyhomePanel();
+  }
+  if (tabId === 'suiyan') renderSuiyan();
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-document.querySelectorAll('.liao-tab-btn').forEach(btn => {
-  btn.addEventListener('click', function () {
-    if (this.id === 'liao-close-btn') return;
-    switchLiaoTab(this.dataset.tab);
-  });
+
+/* ---------- 标签点击事件委托 ---------- */
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('.liao-tab-btn');
+  if (!btn) return;
+  if (btn.id === 'liao-close-btn') {
+    closeLiaoApp();
+    return;
+  }
+  const tabId = btn.dataset.tab;
+  if (!tabId) return;
+  switchLiaoTab(tabId);
 });
 
 /* ---------- 弹窗遮罩点击关闭 ---------- */
